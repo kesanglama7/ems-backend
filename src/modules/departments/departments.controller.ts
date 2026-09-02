@@ -12,7 +12,6 @@ import {
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
-  ApiCookieAuth,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
@@ -31,6 +30,7 @@ import { DepartmentsService } from './departments.service';
 import { RolesGuard } from '../../common/guards/role.guard';
 import { Role } from '@prisma/client';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
+import { ApiAuth } from '../../common/decorators/api-auth.decorator';
 
 @ApiTags('Departments')
 @Controller('departments')
@@ -42,7 +42,7 @@ export class DepartmentsController {
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
-  @ApiCookieAuth('cookieAuth')
+@ApiAuth()
   @ApiOperation({
     summary: 'Create department',
     description:
@@ -90,7 +90,7 @@ export class DepartmentsController {
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
-  @ApiCookieAuth('cookieAuth')
+@ApiAuth()
   @ApiOperation({
     summary: 'List departments',
     description:
@@ -138,7 +138,7 @@ export class DepartmentsController {
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
-  @ApiCookieAuth('cookieAuth')
+@ApiAuth()
   @ApiOperation({
     summary: 'Get department by ID',
     description:
@@ -186,7 +186,7 @@ export class DepartmentsController {
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
-  @ApiCookieAuth('cookieAuth')
+@ApiAuth()
   @ApiOperation({
     summary: 'Update department',
     description:
@@ -247,7 +247,7 @@ export class DepartmentsController {
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
-  @ApiCookieAuth('cookieAuth')
+@ApiAuth()
   @ApiOperation({
     summary: 'Deactivate department',
     description:

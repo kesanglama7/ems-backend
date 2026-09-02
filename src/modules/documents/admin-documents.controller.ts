@@ -10,7 +10,6 @@ import {
 
 import {
   ApiBadRequestResponse,
-  ApiCookieAuth,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -32,12 +31,13 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { RequestUser } from '../../common/interfaces/request-user.interface';
 import { ReviewDocumentDto } from './dto/review-document.dto';
 import { RejectDocumentDto } from './dto/dto/reject-document.dto';
+import { ApiAuth } from '../../common/decorators/api-auth.decorator';
 
 @ApiTags('Admin Documents')
 @Controller('admin/documents')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN)
-@ApiCookieAuth('cookieAuth')
+@ApiAuth()
 export class AdminDocumentsController {
   constructor(
     private readonly documentsService: DocumentsService,

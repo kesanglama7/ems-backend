@@ -4,6 +4,7 @@ import {
   IsArray,
   IsIn,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   Matches,
@@ -90,4 +91,46 @@ export class UpdateOfficeSettingDto {
   @Min(0)
   @Max(180)
   gracePeriodMinutes?: number;
+
+  @ApiPropertyOptional({
+    example: 27.717245,
+    minimum: -90,
+    maximum: 90,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  officeLatitude?: number;
+
+  @ApiPropertyOptional({
+    example: 85.323960,
+    minimum: -180,
+    maximum: 180,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  officeLongitude?: number;
+
+  @ApiPropertyOptional({
+    example: 'Kathmandu, Nepal',
+    maxLength: 500,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  officeAddress?: string;
+
+  @ApiPropertyOptional({
+    example: 100,
+    minimum: 20,
+    maximum: 5000,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(20)
+  @Max(5000)
+  attendanceRadiusMeters?: number;
 }

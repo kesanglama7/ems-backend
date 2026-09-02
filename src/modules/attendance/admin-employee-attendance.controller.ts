@@ -34,9 +34,7 @@ import { RolesGuard } from '../../common/guards/role.guard';
 @Roles(Role.ADMIN)
 @ApiCookieAuth('cookieAuth')
 export class AdminEmployeeAttendanceController {
-  constructor(
-    private readonly attendanceService: AttendanceService,
-  ) {}
+  constructor(private readonly attendanceService: AttendanceService) {}
 
   @Get(':employeeId/attendance')
   @ApiOperation({
@@ -50,8 +48,7 @@ export class AdminEmployeeAttendanceController {
     example: 'd853e9bc-9dd4-4ec4-8753-9794b9da2bb4',
   })
   @ApiOkResponse({
-    description:
-      'Employee attendance retrieved successfully.',
+    description: 'Employee attendance retrieved successfully.',
     schema: {
       example: {
         success: true,
@@ -70,12 +67,9 @@ export class AdminEmployeeAttendanceController {
           attendance: [
             {
               id: 'attendance-uuid',
-              workDate:
-                '2026-08-26T00:00:00.000Z',
-              checkInAt:
-                '2026-08-26T04:15:00.000Z',
-              checkOutAt:
-                '2026-08-26T12:20:00.000Z',
+              workDate: '2026-08-26T00:00:00.000Z',
+              checkInAt: '2026-08-26T04:15:00.000Z',
+              checkOutAt: '2026-08-26T12:20:00.000Z',
               isLate: false,
               totalMinutes: 485,
             },
@@ -89,31 +83,21 @@ export class AdminEmployeeAttendanceController {
       'Employee ID is invalid, date filters are invalid, or from date is after to date.',
   })
   @ApiUnauthorizedResponse({
-    description:
-      'Authentication cookie is missing or invalid.',
+    description: 'Authentication cookie is missing or invalid.',
   })
   @ApiForbiddenResponse({
-    description:
-      'Authenticated user does not have ADMIN role.',
+    description: 'Authenticated user does not have ADMIN role.',
   })
   @ApiNotFoundResponse({
-    description:
-      'Employee or Office Settings were not found.',
+    description: 'Employee or Office Settings were not found.',
   })
   getEmployeeAttendance(
-    @Param(
-      'employeeId',
-      new ParseUUIDPipe(),
-    )
+    @Param('employeeId', new ParseUUIDPipe())
     employeeId: string,
 
     @Query()
     query: MyAttendanceQueryDto,
   ) {
-    return this.attendanceService
-      .getEmployeeAttendance(
-        employeeId,
-        query,
-      );
+    return this.attendanceService.getEmployeeAttendance(employeeId, query);
   }
 }

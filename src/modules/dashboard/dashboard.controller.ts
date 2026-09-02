@@ -20,12 +20,13 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { DashboardService } from './dashboard.service';
 import { RolesGuard } from '../../common/guards/role.guard';
 import { Role } from '@prisma/client';
+import { ApiAuth } from '../../common/decorators/api-auth.decorator';
 
 @ApiTags('Admin Dashboard')
 @Controller('admin/dashboard')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN)
-@ApiCookieAuth('cookieAuth')
+@ApiAuth()
 export class DashboardController {
   constructor(
     private readonly dashboardService: DashboardService,

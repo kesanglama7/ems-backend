@@ -24,6 +24,7 @@ import { UpdateOfficeSettingDto } from './dto/update-office-setting.dto';
 import { RolesGuard } from '../../common/guards/role.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
+import { ApiAuth } from '../../common/decorators/api-auth.decorator';
 
 @ApiTags('Office Settings')
 @Controller('office-settings')
@@ -34,7 +35,7 @@ export class OfficeSettingsController {
 
   @Get()
   @UseGuards(JwtAuthGuard)
-  @ApiCookieAuth('cookieAuth')
+@ApiAuth()
   @ApiOperation({
     summary: 'Get office settings',
     description:
@@ -60,6 +61,10 @@ export class OfficeSettingsController {
             'FRIDAY',
           ],
           gracePeriodMinutes: 10,
+          officeLatitude: 27.717245,
+          officeLongitude: 85.323960,
+          officeAddress: 'Kathmandu, Nepal',
+          attendanceRadiusMeters: 100,
           createdAt:
             '2026-08-26T01:30:00.000Z',
           updatedAt:
@@ -84,7 +89,7 @@ export class OfficeSettingsController {
     @Patch()
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(Role.ADMIN)
-    @ApiCookieAuth('cookieAuth')
+  @ApiAuth()
     @ApiOperation({
     summary: 'Update office settings',
     description:
@@ -113,13 +118,17 @@ export class OfficeSettingsController {
             'FRIDAY',
             ],
             gracePeriodMinutes: 15,
+            officeLatitude: 27.717245,
+            officeLongitude: 85.323960,
+            officeAddress: 'Kathmandu, Nepal',
+            attendanceRadiusMeters: 100,
         },
         },
     },
     })
     @ApiBadRequestResponse({
     description:
-        'Validation failed, timezone is invalid, or office start time is not earlier than end time.',
+        'Validation failed, coordinate pair is incomplete, timezone is invalid, or office start time is not earlier than end time.',
     })
     @ApiUnauthorizedResponse({
     description:

@@ -1,7 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { EmployeeWorkMode } from '@prisma/client';
 import {
   IsDateString,
   IsEmail,
+  IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -75,4 +77,13 @@ export class CreateEmployeeDto {
   @IsOptional()
   @IsDateString()
   dateOfJoining?: string;
+
+  @ApiPropertyOptional({
+    enum: EmployeeWorkMode,
+    example: EmployeeWorkMode.ON_FIELD,
+    description: 'Defines whether the employee normally works from the configured office location or remotely.',
+  })
+  @IsOptional()
+  @IsEnum(EmployeeWorkMode)
+  workMode?: EmployeeWorkMode;
 }

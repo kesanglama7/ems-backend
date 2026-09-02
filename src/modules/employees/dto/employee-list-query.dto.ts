@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { UserStatus } from '@prisma/client';
+import { EmployeeWorkMode, UserStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsEnum,
@@ -58,4 +58,13 @@ export class EmployeeListQueryDto {
   @IsOptional()
   @IsEnum(UserStatus)
   status?: UserStatus;
+
+  @ApiPropertyOptional({
+    enum: EmployeeWorkMode,
+    example: EmployeeWorkMode.ON_FIELD,
+    description: 'Filter employees by work mode.',
+  })
+  @IsOptional()
+  @IsEnum(EmployeeWorkMode)
+  workMode?: EmployeeWorkMode;
 }

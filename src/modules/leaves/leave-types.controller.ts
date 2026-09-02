@@ -34,11 +34,12 @@ import { UpdateLeaveTypeDto } from './dto/update-leave-type.dto';
 import { LeaveTypesService } from './leave-types.service';
 import { RolesGuard } from '../../common/guards/role.guard';
 import { Role } from '@prisma/client';
+import { ApiAuth } from '../../common/decorators/api-auth.decorator';
 
 @ApiTags('Leave Types')
 @Controller('leave-types')
 @UseGuards(JwtAuthGuard)
-@ApiCookieAuth('cookieAuth')
+@ApiAuth()
 export class LeaveTypesController {
   constructor(
     private readonly leaveTypesService: LeaveTypesService,

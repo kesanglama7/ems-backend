@@ -31,12 +31,13 @@ import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { LeavesService } from './leaves.service';
 import { Role } from '@prisma/client';
 import { RolesGuard } from '../../common/guards/role.guard';
+import { ApiAuth } from '../../common/decorators/api-auth.decorator';
 
 @ApiTags('Leaves')
 @Controller('leaves')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.EMPLOYEE)
-@ApiCookieAuth('cookieAuth')
+@ApiAuth()
 export class LeavesController {
   constructor(
     private readonly leavesService: LeavesService,

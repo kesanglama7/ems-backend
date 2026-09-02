@@ -10,7 +10,7 @@ import * as bcrypt from 'bcrypt';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
-import { Role } from '@prisma/client';
+import { EmployeeWorkMode, Role, UserStatus } from '@prisma/client';
 import { EmployeeListQueryDto } from './dto/employee-list-query.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { UpdateEmployeeStatusDto } from './dto/update-employee-status.dto';
@@ -218,6 +218,10 @@ export class EmployeesService {
                   ? new Date(dto.dateOfJoining)
                   : null,
 
+              workMode:
+                dto.workMode ??
+                EmployeeWorkMode.ON_FIELD,
+
               departmentId:
                 dto.departmentId ?? null,
 
@@ -264,6 +268,10 @@ export class EmployeesService {
     const where = {
         ...(query.departmentId && {
         departmentId: query.departmentId,
+        }),
+
+        ...(query.workMode && {
+        workMode: query.workMode,
         }),
 
         ...(query.status && {
@@ -528,6 +536,10 @@ export class EmployeesService {
                 ? null
                 : new Date(dto.dateOfJoining),
             }),
+
+            ...(dto.workMode !== undefined && {
+            workMode: dto.workMode,
+            }),
         },
 
         include: {
@@ -663,6 +675,73 @@ export class EmployeesService {
             profileImageUrl,
         },
     };
+    }
+
+    //GET- my department colleagues
+    async findMyDepartmentColleagues(userId: string) {
+    const currentEmployee =
+        await this.prisma.employee.findUnique({
+        where: { userId },
+        select: { id: true, departmentId: true },
+        });
+
+    if (!currentEmployee) {
+        throw new NotFoundException(
+        'Employee profile not found.',
+        );
+    }
+
+    if (!currentEmployee.departmentId) {
+        return { success: true, data: [] };
+    }
+
+    const colleagues =
+        await this.prisma.employee.findMany({
+        where: {
+            departmentId: currentEmployee.departmentId,
+            id: { not: currentEmployee.id },
+            user: {
+            is: {
+                status: UserStatus.ACTIVE,
+            },
+            },
+        },
+        select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            jobTitle: true,
+            profileImagePath: true,
+        },
+        orderBy: [
+            { firstName: 'asc' },
+            { lastName: 'asc' },
+        ],
+        });
+
+    const withProfiles = await Promise.all(
+        colleagues.map(async (emp) => {
+        let profileImageUrl: string | null = null;
+
+        if (emp.profileImagePath) {
+            const signedUrl =
+            await this.storageService.createSignedUrl(
+                emp.profileImagePath,
+            );
+            profileImageUrl = signedUrl.url;
+        }
+
+        return {
+            id: emp.id,
+            firstName: emp.firstName,
+            lastName: emp.lastName,
+            jobTitle: emp.jobTitle,
+            profileImageUrl,
+        };
+        }),
+    );
+
+    return { success: true, data: withProfiles };
     }
 
     //PATCH- me

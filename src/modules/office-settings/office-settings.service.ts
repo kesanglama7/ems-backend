@@ -75,6 +75,26 @@ export class OfficeSettingsService {
             );
         }
 
+        // Coordinate pair validation
+        const latitude =
+            dto.officeLatitude ??
+            settings.officeLatitude;
+
+        const longitude =
+            dto.officeLongitude ??
+            settings.officeLongitude;
+
+        if (
+            (latitude === null &&
+            longitude !== null) ||
+            (latitude !== null &&
+            longitude === null)
+        ) {
+            throw new BadRequestException(
+            'Office latitude and longitude must be configured together.',
+            );
+        }
+
         const updatedSettings =
             await this.prisma.officeSetting.update({
             where: {
@@ -108,6 +128,30 @@ export class OfficeSettingsService {
                 undefined && {
                 gracePeriodMinutes:
                     dto.gracePeriodMinutes,
+                }),
+
+                ...(dto.officeLatitude !==
+                undefined && {
+                officeLatitude:
+                    dto.officeLatitude,
+                }),
+
+                ...(dto.officeLongitude !==
+                undefined && {
+                officeLongitude:
+                    dto.officeLongitude,
+                }),
+
+                ...(dto.officeAddress !==
+                undefined && {
+                officeAddress:
+                    dto.officeAddress.trim(),
+                }),
+
+                ...(dto.attendanceRadiusMeters !==
+                undefined && {
+                attendanceRadiusMeters:
+                    dto.attendanceRadiusMeters,
                 }),
             },
             });

@@ -1,5 +1,16 @@
-import { Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
-import { ApiBadRequestResponse, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiForbiddenResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+
+import {
+  ApiBadRequestResponse,
+  ApiConflictResponse,
+  ApiCreatedResponse,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 
 import { AttendanceService } from './attendance.service';
 import type { RequestUser } from '../../common/interfaces/request-user.interface';
@@ -9,234 +20,232 @@ import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/role.guard';
 import { MyAttendanceQueryDto } from './dto/my-attendance-query.dto';
+import { CheckInDto } from './dto/check-in.dto';
+import { CheckOutDto } from './dto/check-out.dto';
+import { ApiAuth } from '../../common/decorators/api-auth.decorator';
 
 @ApiTags('Attendance')
 @Controller('attendance')
 export class AttendanceController {
-  constructor(
-    private readonly attendanceService: AttendanceService,
-  ) {}
+  constructor(private readonly attendanceService: AttendanceService) {}
 
-  //Check-in POST
-    @Post('check-in')
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(Role.EMPLOYEE)
-    @ApiCookieAuth('cookieAuth')
-    @ApiOperation({
+  // ─── Check In ──────────────────────────────────────────────────────────────
+
+  @Post('check-in')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.EMPLOYEE)
+  @ApiAuth()
+  @ApiOperation({
     summary: 'Check in',
     description:
-        'Checks in the currently authenticated employee for the current office-local working date.',
-    })
-    @ApiCreatedResponse({
+      'Checks in the currently authenticated employee for the current office-local working date. ON_FIELD employees must provide their current location.',
+  })
+  @ApiCreatedResponse({
     description: 'Checked in successfully.',
     schema: {
-        example: {
+      example: {
         success: true,
         message: 'Checked in successfully.',
         data: {
-            id: 'attendance-uuid',
-            workDate:
-            '2026-08-26T00:00:00.000Z',
-            checkInAt:
-            '2026-08-26T03:20:00.000Z',
-            checkOutAt: null,
-            isLate: false,
-            totalMinutes: null,
+          id: 'attendance-uuid',
+          workDate: '2026-09-02T00:00:00.000Z',
+          status: 'OPEN',
+          source: 'EMPLOYEE',
+          checkInAt: '2026-09-02T02:45:00.000Z',
+          checkOutAt: null,
+          isLate: false,
+          lateMinutes: 0,
+          earlyMinutes: 15,
+          totalMinutes: null,
+          overtimeMinutes: null,
+          scheduledMinutes: 540,
+          workModeSnapshot: 'ON_FIELD',
+          checkInLatitude: 27.717245,
+          checkInLongitude: 85.32396,
+          checkInDistanceMeters: 52,
         },
-        },
+      },
     },
-    })
-    @ApiBadRequestResponse({
+  })
+  @ApiBadRequestResponse({
     description:
-        'Today is not a working day, check-in is before office hours, or office hours have ended.',
-    })
-    @ApiUnauthorizedResponse({
-    description:
-        'Authentication cookie is missing or invalid.',
-    })
-    @ApiForbiddenResponse({
-    description:
-        'Authenticated user is not an EMPLOYEE.',
-    })
-    @ApiNotFoundResponse({
-    description:
-        'Employee profile or Office Settings were not found.',
-    })
-    @ApiConflictResponse({
-    description:
-        'Employee has already checked in today.',
-    })
-    checkIn(
-    @CurrentUser() user: RequestUser,
-    ) {
-    return this.attendanceService.checkIn(
-        user.id,
-    );
-    }
+      'Today is not a working day, location is missing for ON_FIELD, or employee is outside geofence.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication cookie is missing or invalid.',
+  })
+  @ApiForbiddenResponse({
+    description: 'Authenticated user is not an EMPLOYEE.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Employee profile or Office Settings were not found.',
+  })
+  @ApiConflictResponse({
+    description: 'Employee has already checked in today.',
+  })
+  checkIn(@CurrentUser() user: RequestUser, @Body() dto?: CheckInDto) {
+    return this.attendanceService.checkIn(user.id, dto);
+  }
 
-    //Check-out
-    @Post('check-out')
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(Role.EMPLOYEE)
-    @ApiCookieAuth('cookieAuth')
-    @ApiOperation({
+  // ─── Check Out ─────────────────────────────────────────────────────────────
+
+  @Post('check-out')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.EMPLOYEE)
+  @ApiAuth()
+  @ApiOperation({
     summary: 'Check out',
     description:
-        'Checks out the currently authenticated employee and calculates total worked minutes for today.',
-    })
-    @ApiCreatedResponse({
+      'Checks out the currently authenticated employee and calculates total worked minutes for today. ON_FIELD employees must provide their current location.',
+  })
+  @ApiCreatedResponse({
     description: 'Checked out successfully.',
     schema: {
-        example: {
+      example: {
         success: true,
         message: 'Checked out successfully.',
         data: {
-            id: 'attendance-uuid',
-            workDate:
-            '2026-08-26T00:00:00.000Z',
-            checkInAt:
-            '2026-08-26T03:15:00.000Z',
-            checkOutAt:
-            '2026-08-26T11:15:00.000Z',
-            isLate: false,
-            totalMinutes: 480,
+          id: 'attendance-uuid',
+          workDate: '2026-09-02T00:00:00.000Z',
+          status: 'COMPLETED',
+          source: 'EMPLOYEE',
+          checkInAt: '2026-09-02T02:45:00.000Z',
+          checkOutAt: '2026-09-02T11:15:00.000Z',
+          isLate: false,
+          lateMinutes: 0,
+          earlyMinutes: 15,
+          afterHoursMinutes: 0,
+          totalMinutes: 510,
+          overtimeMinutes: 0,
+          scheduledMinutes: 540,
+          workModeSnapshot: 'REMOTE',
+          checkOutLatitude: 27.717245,
+          checkOutLongitude: 85.32396,
+          checkOutDistanceMeters: 52,
         },
-        },
+      },
     },
-    })
-    @ApiBadRequestResponse({
+  })
+  @ApiBadRequestResponse({
     description:
-        'Employee has not checked in today.',
-    })
-    @ApiUnauthorizedResponse({
-    description:
-        'Authentication cookie is missing or invalid.',
-    })
-    @ApiForbiddenResponse({
-    description:
-        'Authenticated user is not an EMPLOYEE.',
-    })
-    @ApiNotFoundResponse({
-    description:
-        'Employee profile or Office Settings were not found.',
-    })
-    @ApiConflictResponse({
-    description:
-        'Employee has already checked out today.',
-    })
-    checkOut(
-    @CurrentUser() user: RequestUser,
-    ) {
-    return this.attendanceService.checkOut(
-        user.id,
-    );
-    }
+      'Employee has not checked in today, or location is missing for ON_FIELD checkout.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication cookie is missing or invalid.',
+  })
+  @ApiForbiddenResponse({
+    description: 'Authenticated user is not an EMPLOYEE.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Employee profile or Office Settings were not found.',
+  })
+  @ApiConflictResponse({
+    description: 'Employee has already checked out today.',
+  })
+  checkOut(@CurrentUser() user: RequestUser, @Body() dto?: CheckOutDto) {
+    return this.attendanceService.checkOut(user.id, dto);
+  }
 
+  // ─── Get Today's Attendance ────────────────────────────────────────────────
 
-    //GET toady attendance
-    @Get('me/today')
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(Role.EMPLOYEE)
-    @ApiCookieAuth('cookieAuth')
-    @ApiOperation({
+  @Get('me/today')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.EMPLOYEE)
+  @ApiAuth()
+  @ApiOperation({
     summary: "Get today's attendance",
     description:
-        'Returns the attendance record for the currently authenticated employee for the current office-local date.',
-    })
-    @ApiOkResponse({
-    description:
-        "Today's attendance retrieved successfully.",
+      'Returns the attendance record for the currently authenticated employee for the current office-local date.',
+  })
+  @ApiOkResponse({
+    description: "Today's attendance retrieved successfully.",
     schema: {
-        example: {
+      example: {
         success: true,
         data: {
-            id: 'attendance-uuid',
-            workDate:
-            '2026-08-26T00:00:00.000Z',
-            checkInAt:
-            '2026-08-26T03:20:00.000Z',
-            checkOutAt: null,
-            isLate: false,
-            totalMinutes: null,
+          id: 'attendance-uuid',
+          workDate: '2026-09-02T00:00:00.000Z',
+          status: 'OPEN',
+          source: 'EMPLOYEE',
+          checkInAt: '2026-09-02T02:45:00.000Z',
+          checkOutAt: null,
+          isLate: false,
+          lateMinutes: 0,
+          earlyMinutes: 15,
+          totalMinutes: null,
+          overtimeMinutes: null,
+          scheduledMinutes: 540,
+          workModeSnapshot: 'ON_FIELD',
         },
-        },
+      },
     },
-    })
-    @ApiUnauthorizedResponse({
-    description:
-        'Authentication cookie is missing or invalid.',
-    })
-    @ApiForbiddenResponse({
-    description:
-        'Authenticated user is not an EMPLOYEE.',
-    })
-    @ApiNotFoundResponse({
-    description:
-        'Employee profile or Office Settings were not found.',
-    })
-    getMyTodayAttendance(
-    @CurrentUser() user: RequestUser,
-    ) {
-    return this.attendanceService
-        .getMyTodayAttendance(user.id);
-    }
-    
-    //GET: attendance
-    @Get('me')
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(Role.EMPLOYEE)
-    @ApiCookieAuth('cookieAuth')
-    @ApiOperation({
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication cookie is missing or invalid.',
+  })
+  @ApiForbiddenResponse({
+    description: 'Authenticated user is not an EMPLOYEE.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Employee profile or Office Settings were not found.',
+  })
+  getMyTodayAttendance(@CurrentUser() user: RequestUser) {
+    return this.attendanceService.getMyTodayAttendance(user.id);
+  }
+
+  // ─── Get Attendance History ────────────────────────────────────────────────
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.EMPLOYEE)
+  @ApiAuth()
+  @ApiOperation({
     summary: 'Get own attendance history',
     description:
-        'Returns attendance records for the currently authenticated employee. Optional from and to date filters are supported.',
-    })
-    @ApiOkResponse({
-    description:
-        'Attendance history retrieved successfully.',
+      'Returns attendance records for the currently authenticated employee. Optional from and to date filters are supported.',
+  })
+  @ApiOkResponse({
+    description: 'Attendance history retrieved successfully.',
     schema: {
-        example: {
+      example: {
         success: true,
         data: [
-            {
+          {
             id: 'attendance-uuid',
-            workDate:
-                '2026-08-26T00:00:00.000Z',
-            checkInAt:
-                '2026-08-26T04:20:00.000Z',
-            checkOutAt:
-                '2026-08-26T12:20:00.000Z',
+            workDate: '2026-09-02T00:00:00.000Z',
+            status: 'COMPLETED',
+            source: 'EMPLOYEE',
+            checkInAt: '2026-09-02T02:45:00.000Z',
+            checkOutAt: '2026-09-02T11:15:00.000Z',
             isLate: false,
-            totalMinutes: 480,
-            },
+            lateMinutes: 0,
+            earlyMinutes: 15,
+            afterHoursMinutes: 0,
+            totalMinutes: 510,
+            overtimeMinutes: 0,
+            scheduledMinutes: 540,
+            workModeSnapshot: 'REMOTE',
+          },
         ],
-        },
+      },
     },
-    })
-    @ApiBadRequestResponse({
-    description:
-        'Invalid date filters or from date is after to date.',
-    })
-    @ApiUnauthorizedResponse({
-    description:
-        'Authentication cookie is missing or invalid.',
-    })
-    @ApiForbiddenResponse({
-    description:
-        'Authenticated user is not an EMPLOYEE.',
-    })
-    @ApiNotFoundResponse({
-    description:
-        'Employee profile or Office Settings were not found.',
-    })
-    getMyAttendance(
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid date filters or from date is after to date.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication cookie is missing or invalid.',
+  })
+  @ApiForbiddenResponse({
+    description: 'Authenticated user is not an EMPLOYEE.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Employee profile or Office Settings were not found.',
+  })
+  getMyAttendance(
     @CurrentUser() user: RequestUser,
     @Query() query: MyAttendanceQueryDto,
-    ) {
-    return this.attendanceService
-        .getMyAttendance(
-        user.id,
-        query,
-        );
-    }
+  ) {
+    return this.attendanceService.getMyAttendance(user.id, query);
+  }
 }

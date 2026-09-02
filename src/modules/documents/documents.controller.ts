@@ -32,6 +32,7 @@ import { DOCUMENT_MAX_SIZE } from './constants/document.constants';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { RequestUser } from '../../common/interfaces/request-user.interface';
 import { UploadDocumentDto } from './dto/upload-document.dto';
+import { ApiAuth } from '../../common/decorators/api-auth.decorator';
 
 @ApiTags('Documents')
 @Controller('documents')
@@ -50,7 +51,7 @@ export class DocumentsController {
         },
     }),
     )
-    @ApiCookieAuth('cookieAuth')
+@ApiAuth()
     @ApiConsumes('multipart/form-data')
     @ApiOperation({
     summary: 'Upload own employee document',
@@ -148,7 +149,7 @@ export class DocumentsController {
     //GET All documents
     @Get()
     @UseGuards(JwtAuthGuard)
-    @ApiCookieAuth('cookieAuth')
+@ApiAuth()
     @ApiOperation({
     summary: 'List own documents',
     description:
@@ -199,7 +200,7 @@ export class DocumentsController {
     //GET: id
     @Get(':documentId')
     @UseGuards(JwtAuthGuard)
-    @ApiCookieAuth('cookieAuth')
+@ApiAuth()
     @ApiOperation({
     summary: 'Get own document by ID',
     description:
@@ -256,7 +257,7 @@ export class DocumentsController {
     //GET: file
     @Get(':documentId/file')
     @UseGuards(JwtAuthGuard)
-    @ApiCookieAuth('cookieAuth')
+@ApiAuth()
     @ApiOperation({
     summary: 'Get own document file',
     description:
@@ -304,7 +305,7 @@ export class DocumentsController {
     //DELETE: id
     @Delete(':documentId')
     @UseGuards(JwtAuthGuard)
-    @ApiCookieAuth('cookieAuth')
+@ApiAuth()
     @ApiOperation({
     summary: 'Delete own document',
     description:

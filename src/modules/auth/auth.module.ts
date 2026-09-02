@@ -1,5 +1,9 @@
-import { Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import {
+  Module,
+} from '@nestjs/common';
+import {
+  ConfigService,
+} from '@nestjs/config';
 import {
   JwtModule,
   JwtModuleOptions,
@@ -13,20 +17,24 @@ import { RolesGuard } from '../../common/guards/role.guard';
 @Module({
   imports: [
     JwtModule.registerAsync({
-      inject: [ConfigService],
+      inject: [
+        ConfigService,
+      ],
 
       useFactory: (
         configService: ConfigService,
       ): JwtModuleOptions => ({
         secret:
           configService.getOrThrow<string>(
-            'JWT_SECRET',
+            'JWT_ACCESS_SECRET',
           ),
       }),
     }),
   ],
 
-  controllers: [AuthController],
+  controllers: [
+    AuthController,
+  ],
 
   providers: [
     AuthService,

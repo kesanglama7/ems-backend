@@ -3,9 +3,11 @@ import { Transform } from 'class-transformer';
 import {
   IsBoolean,
   IsDateString,
+  IsEnum,
   IsOptional,
   IsUUID,
 } from 'class-validator';
+import { AttendanceStatus, EmployeeWorkMode } from '@prisma/client';
 
 export class AdminAttendanceQueryDto {
   @ApiPropertyOptional({
@@ -43,9 +45,24 @@ export class AdminAttendanceQueryDto {
   @Transform(({ value }) => {
     if (value === 'true') return true;
     if (value === 'false') return false;
-
-    return value;
+    return value as boolean | undefined;
   })
   @IsBoolean()
   isLate?: boolean;
+
+  @ApiPropertyOptional({
+    example: 'OPEN',
+    enum: AttendanceStatus,
+  })
+  @IsOptional()
+  @IsEnum(AttendanceStatus)
+  status?: AttendanceStatus;
+
+  @ApiPropertyOptional({
+    example: 'ON_FIELD',
+    enum: EmployeeWorkMode,
+  })
+  @IsOptional()
+  @IsEnum(EmployeeWorkMode)
+  workMode?: EmployeeWorkMode;
 }

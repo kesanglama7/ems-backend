@@ -31,6 +31,27 @@ enum DocumentStatus {
   REJECTED
 }
 
+enum EmployeeWorkMode {
+  ON_FIELD
+  REMOTE
+}
+
+enum AttendanceStatus {
+  OPEN
+  COMPLETED
+  MISSING_CHECKOUT
+}
+
+enum AttendanceSource {
+  EMPLOYEE
+  ADMIN
+}
+
+enum AttendanceAuditAction {
+  ADMIN_CREATE
+  ADMIN_UPDATE
+}
+
 enum LeaveStatus {
   PENDING
   APPROVED
@@ -38,6 +59,20 @@ enum LeaveStatus {
   CANCELLED
 }
 
+// model User {
+//   id           String     @id @default(uuid())
+//   email        String     @unique
+//   passwordHash String
+//   role         Role       @default(EMPLOYEE)
+//   status       UserStatus @default(ACTIVE)
+
+//   employee Employee?
+
+//   createdAt DateTime @default(now())
+//   updatedAt DateTime @updatedAt
+// }
+
+//new user and AuthSession model to support multiple auth tokens system
 model User {
   id           String     @id @default(uuid())
   email        String     @unique
@@ -45,10 +80,29 @@ model User {
   role         Role       @default(EMPLOYEE)
   status       UserStatus @default(ACTIVE)
 
-  employee Employee?
+  employee     Employee?
+  authSessions AuthSession[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model AuthSession {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  refreshTokenHash String
+
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model Department {
@@ -73,6 +127,8 @@ model Employee {
 
   phone    String?
   jobTitle String?
+
+  workMode EmployeeWorkMode @default(ON_FIELD)
 
   dateOfJoining DateTime?
 
@@ -133,6 +189,12 @@ model OfficeSetting {
 
   gracePeriodMinutes Int @default(0)
 
+  // Office geographic configuration
+  officeLatitude        Float?
+  officeLongitude       Float?
+  officeAddress         String?
+  attendanceRadiusMeters Int @default(100)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -145,17 +207,78 @@ model Attendance {
 
   workDate DateTime
 
+  status     AttendanceStatus @default(OPEN)
+  source     AttendanceSource @default(EMPLOYEE)
+
+  // Employee configuration snapshot
+  workModeSnapshot EmployeeWorkMode?
+
+  // Office schedule snapshot
+  officeTimezoneSnapshot String?
+  scheduledStartAt       DateTime?
+  scheduledEndAt         DateTime?
+  gracePeriodMinutesSnapshot Int?
+  scheduledMinutes       Int?
+
+  // Office geofence snapshot
+  officeLatitudeSnapshot     Float?
+  officeLongitudeSnapshot    Float?
+  officeRadiusMetersSnapshot Int?
+
+  // Actual check-in data
   checkInAt  DateTime
   checkOutAt DateTime?
 
-  isLate Boolean @default(false)
+  // Check-in location
+  checkInLatitude       Float?
+  checkInLongitude      Float?
+  checkInAccuracyMeters Float?
+  checkInDistanceMeters Float?
 
-  totalMinutes Int?
+  // Check-out location
+  checkOutLatitude       Float?
+  checkOutLongitude      Float?
+  checkOutAccuracyMeters Float?
+  checkOutDistanceMeters Float?
+
+  // Attendance calculations
+  isLate              Boolean  @default(false)
+  lateMinutes         Int      @default(0)
+  earlyMinutes        Int      @default(0)
+  afterHoursMinutes   Int      @default(0)
+  totalMinutes        Int?
+  overtimeMinutes     Int?
+
+  audits AttendanceAudit[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([employeeId, workDate])
+  @@index([employeeId])
+  @@index([workDate])
+  @@index([status])
+}
+
+model AttendanceAudit {
+  id String @id @default(uuid())
+
+  attendanceId String
+  attendance Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+
+  adminUserId String
+
+  action AttendanceAuditAction
+
+  reason String
+
+  before Json?
+  after  Json
+
+  createdAt DateTime @default(now())
+
+  @@index([attendanceId])
+  @@index([adminUserId])
 }
 
 model LeaveType {

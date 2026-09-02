@@ -32,12 +32,13 @@ import { Role } from '@prisma/client';
 import { ReviewLeaveDto } from './dto/review-leave.dto';
 import type { RequestUser } from '../../common/interfaces/request-user.interface';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ApiAuth } from '../../common/decorators/api-auth.decorator';
 
 @ApiTags('Admin Leaves')
 @Controller('admin/leaves')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN)
-@ApiCookieAuth('cookieAuth')
+@ApiAuth()
 export class AdminLeavesController {
   constructor(
     private readonly leavesService: LeavesService,

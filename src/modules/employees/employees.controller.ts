@@ -44,6 +44,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { PROFILE_IMAGE_MAX_SIZE } from './constants/profile-image.constants';
+import { ApiAuth } from '../../common/decorators/api-auth.decorator';
 
 @ApiTags('Employees')
 @Controller('employees')
@@ -62,7 +63,7 @@ export class EmployeesController {
         },
     }),
     )
-    @ApiCookieAuth('cookieAuth')
+@ApiAuth()
     @ApiConsumes('multipart/form-data')
     @ApiOperation({
     summary: 'Upload own profile image',
@@ -129,7 +130,7 @@ export class EmployeesController {
         },
     }),
     )
-    @ApiCookieAuth('cookieAuth')
+@ApiAuth()
     @ApiConsumes('multipart/form-data')
     @ApiOperation({
     summary: 'Upload employee profile image',
@@ -219,6 +220,7 @@ export class EmployeesController {
           lastName: 'Doe',
           phone: '+9779800000000',
           jobTitle: 'Software Engineer',
+          workMode: 'ON_FIELD',
           dateOfJoining:
             '2026-08-25T00:00:00.000Z',
           profileImagePath: null,
@@ -272,7 +274,7 @@ export class EmployeesController {
     @Get()
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(Role.ADMIN)
-    @ApiCookieAuth('cookieAuth')
+@ApiAuth()
     @ApiOperation({
     summary: 'List employees',
     description:
@@ -291,6 +293,7 @@ export class EmployeesController {
             lastName: 'Doe',
             phone: '+9779800000000',
             jobTitle: 'Software Engineer',
+            workMode: 'ON_FIELD',
             dateOfJoining:
                 '2026-08-25T00:00:00.000Z',
             profileImagePath: null,
@@ -337,7 +340,7 @@ export class EmployeesController {
      //GET: me
     @Get('me')
     @UseGuards(JwtAuthGuard)
-    @ApiCookieAuth('cookieAuth')
+@ApiAuth()
     @ApiOperation({
     summary: 'Get own employee profile',
     description:
@@ -355,6 +358,7 @@ export class EmployeesController {
             lastName: 'Doe',
             phone: '+9779800000000',
             jobTitle: 'Software Engineer',
+            workMode: 'ON_FIELD',
             dateOfJoining: '2026-08-25T00:00:00.000Z',
             profileImagePath: null,
             departmentId: 'department-uuid',
@@ -390,11 +394,56 @@ export class EmployeesController {
     );
     }
 
+    //GET: department colleagues
+    @Get('me/department-colleagues')
+    @UseGuards(JwtAuthGuard)
+    @ApiAuth()
+    @ApiOperation({
+    summary: 'Get department colleagues',
+    description:
+        'Returns active employees who belong to the same department as the currently authenticated employee. The current employee is excluded.',
+    })
+    @ApiOkResponse({
+    description:
+        'Department colleagues retrieved successfully.',
+    schema: {
+        example: {
+        success: true,
+        data: [
+            {
+            id: 'employee-uuid',
+            firstName: 'John',
+            lastName: 'Doe',
+            jobTitle: 'Backend Developer',
+            profileImageUrl:
+                'https://temporary-signed-url...',
+            },
+        ],
+        },
+    },
+    })
+    @ApiUnauthorizedResponse({
+    description:
+        'Authentication cookie is missing or invalid.',
+    })
+    @ApiNotFoundResponse({
+    description:
+        'No employee profile exists for the authenticated user.',
+    })
+    findMyDepartmentColleagues(
+    @CurrentUser() user: RequestUser,
+    ) {
+    return this.employeesService
+        .findMyDepartmentColleagues(
+        user.id,
+        );
+    }
+
     //GET:id
     @Get(':employeeId')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(Role.ADMIN)
-    @ApiCookieAuth('cookieAuth')
+@ApiAuth()
     @ApiOperation({
     summary: 'Get employee by ID',
     description:
@@ -417,6 +466,7 @@ export class EmployeesController {
             lastName: 'Doe',
             phone: '+9779800000000',
             jobTitle: 'Software Engineer',
+            workMode: 'ON_FIELD',
             dateOfJoining:
             '2026-08-25T00:00:00.000Z',
             profileImagePath: null,
@@ -469,7 +519,7 @@ export class EmployeesController {
 
     @Patch('me')
     @UseGuards(JwtAuthGuard)
-    @ApiCookieAuth('cookieAuth')
+@ApiAuth()
     @ApiOperation({
     summary: 'Update own employee profile',
     description:
@@ -536,7 +586,7 @@ export class EmployeesController {
     @Patch(':employeeId')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(Role.ADMIN)
-    @ApiCookieAuth('cookieAuth')
+@ApiAuth()
     @ApiOperation({
     summary: 'Update employee',
     description:
@@ -560,6 +610,7 @@ export class EmployeesController {
             lastName: 'Doe',
             phone: '+9779811111111',
             jobTitle: 'Senior Software Engineer',
+            workMode: 'REMOTE',
             dateOfJoining:
             '2026-08-25T00:00:00.000Z',
             departmentId: 'department-uuid',
@@ -612,7 +663,7 @@ export class EmployeesController {
     @Patch(':employeeId/status')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(Role.ADMIN)
-    @ApiCookieAuth('cookieAuth')
+@ApiAuth()
     @ApiOperation({
     summary: 'Update employee status',
     description:
@@ -669,7 +720,7 @@ export class EmployeesController {
     //DELETE: own profile
     @Delete('me/profile-image')
     @UseGuards(JwtAuthGuard)
-    @ApiCookieAuth('cookieAuth')
+@ApiAuth()
     @ApiOperation({
     summary: 'Delete own profile image',
     description:

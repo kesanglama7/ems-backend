@@ -3,8 +3,10 @@ import {
   PartialType,
   PickType,
 } from '@nestjs/swagger';
+import { EmployeeWorkMode } from '@prisma/client';
 import {
   IsDateString,
+  IsEnum,
   IsOptional,
   IsUUID,
   ValidateIf,
@@ -46,4 +48,13 @@ export class UpdateEmployeeDto extends PartialType(
   @ValidateIf((_, value) => value !== null)
   @IsDateString()
   dateOfJoining?: string | null;
+
+  @ApiPropertyOptional({
+    enum: EmployeeWorkMode,
+    example: EmployeeWorkMode.REMOTE,
+    description: 'Defines whether the employee normally works from the configured office location or remotely.',
+  })
+  @IsOptional()
+  @IsEnum(EmployeeWorkMode)
+  workMode?: EmployeeWorkMode;
 }
