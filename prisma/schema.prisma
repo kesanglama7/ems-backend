@@ -135,10 +135,10 @@ model Employee {
   profileImagePath String?
 
   userId String @unique
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   departmentId String?
-  department   Department? @relation(fields: [departmentId], references: [id])
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
 
   documents     EmployeeDocument[]
   attendance    Attendance[]
@@ -152,7 +152,7 @@ model EmployeeDocument {
   id String @id @default(uuid())
 
   employeeId String
-  employee   Employee @relation(fields: [employeeId], references: [id])
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   type DocumentType
 
@@ -190,10 +190,10 @@ model OfficeSetting {
   gracePeriodMinutes Int @default(0)
 
   // Office geographic configuration
-  officeLatitude        Float?
-  officeLongitude       Float?
-  officeAddress         String?
-  attendanceRadiusMeters Int @default(100)
+  officeLatitude         Float?
+  officeLongitude        Float?
+  officeAddress          String?
+  attendanceRadiusMeters Int     @default(100)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -203,22 +203,22 @@ model Attendance {
   id String @id @default(uuid())
 
   employeeId String
-  employee   Employee @relation(fields: [employeeId], references: [id])
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   workDate DateTime
 
-  status     AttendanceStatus @default(OPEN)
-  source     AttendanceSource @default(EMPLOYEE)
+  status AttendanceStatus @default(OPEN)
+  source AttendanceSource @default(EMPLOYEE)
 
   // Employee configuration snapshot
   workModeSnapshot EmployeeWorkMode?
 
   // Office schedule snapshot
-  officeTimezoneSnapshot String?
-  scheduledStartAt       DateTime?
-  scheduledEndAt         DateTime?
+  officeTimezoneSnapshot     String?
+  scheduledStartAt           DateTime?
+  scheduledEndAt             DateTime?
   gracePeriodMinutesSnapshot Int?
-  scheduledMinutes       Int?
+  scheduledMinutes           Int?
 
   // Office geofence snapshot
   officeLatitudeSnapshot     Float?
@@ -242,12 +242,12 @@ model Attendance {
   checkOutDistanceMeters Float?
 
   // Attendance calculations
-  isLate              Boolean  @default(false)
-  lateMinutes         Int      @default(0)
-  earlyMinutes        Int      @default(0)
-  afterHoursMinutes   Int      @default(0)
-  totalMinutes        Int?
-  overtimeMinutes     Int?
+  isLate            Boolean @default(false)
+  lateMinutes       Int     @default(0)
+  earlyMinutes      Int     @default(0)
+  afterHoursMinutes Int     @default(0)
+  totalMinutes      Int?
+  overtimeMinutes   Int?
 
   audits AttendanceAudit[]
 
@@ -264,7 +264,7 @@ model AttendanceAudit {
   id String @id @default(uuid())
 
   attendanceId String
-  attendance Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  attendance   Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
 
   adminUserId String
 
@@ -299,7 +299,7 @@ model LeaveRequest {
   id String @id @default(uuid())
 
   employeeId String
-  employee   Employee @relation(fields: [employeeId], references: [id])
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   leaveTypeId String
   leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id])
