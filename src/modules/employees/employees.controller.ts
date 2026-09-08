@@ -45,6 +45,7 @@ import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { PROFILE_IMAGE_MAX_SIZE } from './constants/profile-image.constants';
 import { ApiAuth } from '../../common/decorators/api-auth.decorator';
+import { TeamMemberListQueryDto } from './dto/team-member-list-query.dto';
 
 @ApiTags('Employees')
 @Controller('employees')
@@ -394,18 +395,18 @@ export class EmployeesController {
     );
     }
 
-    //GET: department colleagues
-    @Get('me/department-colleagues')
+    //GET: all active team members
+    @Get('team-members')
     @UseGuards(JwtAuthGuard)
     @ApiAuth()
     @ApiOperation({
-    summary: 'Get department colleagues',
+    summary: 'List team members',
     description:
-        'Returns active employees who belong to the same department as the currently authenticated employee. The current employee is excluded.',
+        'Returns all active employees across the organization. Supports pagination, department filtering, and search by name or email.',
     })
     @ApiOkResponse({
     description:
-        'Department colleagues retrieved successfully.',
+        'Team members retrieved successfully.',
     schema: {
         example: {
         success: true,
@@ -415,10 +416,21 @@ export class EmployeesController {
             firstName: 'John',
             lastName: 'Doe',
             jobTitle: 'Backend Developer',
+            email: 'john@example.com',
+            department: {
+                id: 'department-uuid',
+                name: 'Engineering',
+            },
             profileImageUrl:
                 'https://temporary-signed-url...',
             },
         ],
+        meta: {
+            page: 1,
+            limit: 20,
+            total: 1,
+            totalPages: 1,
+        },
         },
     },
     })
@@ -426,17 +438,11 @@ export class EmployeesController {
     description:
         'Authentication cookie is missing or invalid.',
     })
-    @ApiNotFoundResponse({
-    description:
-        'No employee profile exists for the authenticated user.',
-    })
-    findMyDepartmentColleagues(
-    @CurrentUser() user: RequestUser,
+    findTeamMembers(
+    @Query() query: TeamMemberListQueryDto,
     ) {
     return this.employeesService
-        .findMyDepartmentColleagues(
-        user.id,
-        );
+        .findTeamMembers(query);
     }
 
     //GET:id

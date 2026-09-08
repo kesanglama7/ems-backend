@@ -20,6 +20,7 @@ import { StorageService } from '../storage/storage.service';
 import { PROFILE_IMAGE_ALLOWED_MIME_TYPES, PROFILE_IMAGE_MAX_SIZE } from './constants/profile-image.constants';
 import { getProfileImageExtension } from './utils/profile-image.util';
 import { randomUUID } from 'crypto';
+import { TeamMemberListQueryDto } from './dto/team-member-list-query.dto';
 
 @Injectable()
 export class EmployeesService {
@@ -839,71 +840,121 @@ export class EmployeesService {
     };
     }
 
-    //GET- my department colleagues
-    async findMyDepartmentColleagues(userId: string) {
-    const currentEmployee =
-        await this.prisma.employee.findUnique({
-        where: { userId },
-        select: { id: true, departmentId: true },
-        });
+    //GET- all active team members
+    async findTeamMembers(query: TeamMemberListQueryDto) {
+    const page = query.page;
+    const limit = query.limit;
+    const skip = (page - 1) * limit;
+    const searchTerms = query.search
+        ?.trim()
+        .split(/\s+/)
+        .filter(Boolean);
 
-    if (!currentEmployee) {
-        throw new NotFoundException(
-        'Employee profile not found.',
-        );
-    }
-
-    if (!currentEmployee.departmentId) {
-        return { success: true, data: [] };
-    }
-
-    const colleagues =
-        await this.prisma.employee.findMany({
-        where: {
-            departmentId: currentEmployee.departmentId,
-            id: { not: currentEmployee.id },
-            user: {
-            is: {
-                status: UserStatus.ACTIVE,
-            },
-            },
+    const where: Prisma.EmployeeWhereInput = {
+        ...(query.departmentId && {
+        departmentId: query.departmentId,
+        }),
+        user: {
+        is: {
+            status: UserStatus.ACTIVE,
         },
+        },
+        ...(searchTerms?.length && {
+        AND: searchTerms.map((term) => ({
+            OR: [
+            {
+                firstName: {
+                contains: term,
+                mode: 'insensitive',
+                },
+            },
+            {
+                lastName: {
+                contains: term,
+                mode: 'insensitive',
+                },
+            },
+            {
+                user: {
+                is: {
+                    email: {
+                    contains: term,
+                    mode: 'insensitive',
+                    },
+                },
+                },
+            },
+            ],
+        })),
+        }),
+    };
+
+    const [teamMembers, total] =
+        await this.prisma.$transaction([
+        this.prisma.employee.findMany({
+        where,
+        skip,
+        take: limit,
         select: {
             id: true,
             firstName: true,
             lastName: true,
             jobTitle: true,
             profileImagePath: true,
+            department: {
+            select: {
+                id: true,
+                name: true,
+            },
+            },
+            user: {
+            select: {
+                email: true,
+            },
+            },
         },
         orderBy: [
             { firstName: 'asc' },
             { lastName: 'asc' },
         ],
-        });
+        }),
+        this.prisma.employee.count({ where }),
+        ]);
 
     const withProfiles = await Promise.all(
-        colleagues.map(async (emp) => {
+        teamMembers.map(async (employee) => {
         let profileImageUrl: string | null = null;
 
-        if (emp.profileImagePath) {
+        if (employee.profileImagePath) {
             const signedUrl =
             await this.storageService.createSignedUrl(
-                emp.profileImagePath,
+                employee.profileImagePath,
             );
             profileImageUrl = signedUrl.url;
         }
 
         return {
-            id: emp.id,
-            firstName: emp.firstName,
-            lastName: emp.lastName,
-            jobTitle: emp.jobTitle,
+            id: employee.id,
+            firstName: employee.firstName,
+            lastName: employee.lastName,
+            jobTitle: employee.jobTitle,
+            email: employee.user.email,
+            department: employee.department,
             profileImageUrl,
         };
         }),
     );
 
-    return { success: true, data: withProfiles };
+    return {
+        success: true,
+        data: withProfiles,
+        meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        },
+    };
     }
 
     //PATCH- me
