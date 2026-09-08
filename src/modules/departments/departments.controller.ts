@@ -89,12 +89,12 @@ export class DepartmentsController {
   //GET all
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
-@ApiAuth()
+  @Roles(Role.ADMIN, Role.EMPLOYEE)
+  @ApiAuth()
   @ApiOperation({
     summary: 'List departments',
     description:
-      'Returns all departments including active and inactive departments. Only ADMIN users can access this endpoint.',
+      'Returns all departments including active and inactive departments. Both ADMIN and EMPLOYEE users can access this endpoint.',
   })
   @ApiOkResponse({
     description: 'Departments retrieved successfully.',
@@ -124,11 +124,11 @@ export class DepartmentsController {
   })
   @ApiUnauthorizedResponse({
     description:
-      'Authentication cookie is missing or invalid.',
+      'Authentication is missing or invalid.',
   })
   @ApiForbiddenResponse({
     description:
-      'Authenticated user does not have ADMIN role.',
+      'Authenticated user does not have enough permissions.',
   })
   findAll() {
     return this.departmentsService.findAll();
@@ -138,7 +138,7 @@ export class DepartmentsController {
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
-@ApiAuth()
+  @ApiAuth()
   @ApiOperation({
     summary: 'Get department by ID',
     description:
