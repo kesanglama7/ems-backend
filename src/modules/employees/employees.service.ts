@@ -4,13 +4,14 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 
 
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
-import { EmployeeWorkMode, Role, UserStatus } from '@prisma/client';
+import { EmployeeWorkMode, Prisma, Role, UserStatus } from '@prisma/client';
 import { EmployeeListQueryDto } from './dto/employee-list-query.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { UpdateEmployeeStatusDto } from './dto/update-employee-status.dto';
@@ -22,6 +23,9 @@ import { randomUUID } from 'crypto';
 
 @Injectable()
 export class EmployeesService {
+    private readonly logger = new Logger(
+        EmployeesService.name,
+    );
   constructor(
     private readonly prisma: PrismaService,
     private readonly storageService: StorageService,
@@ -126,10 +130,10 @@ export class EmployeesService {
         },
     };
     }
+
   //create: employee
   async create(dto: CreateEmployeeDto) {
     const email = dto.email.trim().toLowerCase();
-
     const existingUser =
       await this.prisma.user.findUnique({
         where: {
@@ -142,10 +146,9 @@ export class EmployeesService {
 
     if (existingUser) {
       throw new ConflictException(
-        'A employee with this email already exists.',
+        'An employee with this email already exists.',
       );
     }
-
     if (dto.departmentId) {
       const department =
         await this.prisma.department.findUnique({
@@ -166,7 +169,19 @@ export class EmployeesService {
 
       if (!department.isActive) {
         throw new BadRequestException(
-          'Cannot assign employee to an inactive department.',
+          'Cannot assign an employee to an inactive department.',
+        );
+      }
+    }
+
+    let dateOfJoining: Date | null = null;
+
+    if (dto.dateOfJoining) {
+      dateOfJoining = new Date(dto.dateOfJoining);
+
+      if (Number.isNaN(dateOfJoining.getTime())) {
+        throw new BadRequestException(
+          'The joining date is invalid.',
         );
       }
     }
@@ -176,84 +191,231 @@ export class EmployeesService {
       10,
     );
 
-    const result = await this.prisma.$transaction(
-      async (tx) => {
-        const employeeCount =
-          await tx.employee.count();
+    const maximumAttempts = 3;
 
-        const employeeCode = `EMP-${String(
-          employeeCount + 1,
-        ).padStart(4, '0')}`;
+    for (
+      let attempt = 1;
+      attempt <= maximumAttempts;
+      attempt++
+    ) {
+      try {
+        const result =
+          await this.prisma.$transaction(
+            async (tx) => {
 
-        const user = await tx.user.create({
-          data: {
-            email,
-            passwordHash,
-            role: Role.EMPLOYEE,
-          },
-          select: {
-            id: true,
-            email: true,
-            role: true,
-            status: true,
-          },
-        });
+              const lastEmployee =
+                await tx.employee.findFirst({
+                  orderBy: {
+                    employeeCode: 'desc',
+                  },
+                  select: {
+                    employeeCode: true,
+                  },
+                });
 
-        const employee =
-          await tx.employee.create({
-            data: {
-              employeeCode,
+              const lastEmployeeNumber =
+                this.extractEmployeeNumber(
+                  lastEmployee?.employeeCode,
+                );
 
-              firstName: dto.firstName.trim(),
-              lastName: dto.lastName.trim(),
+              const employeeCode =
+                this.formatEmployeeCode(
+                  lastEmployeeNumber + 1,
+                );
 
-              phone:
-                dto.phone?.trim() || null,
-
-              jobTitle:
-                dto.jobTitle?.trim() || null,
-
-              dateOfJoining:
-                dto.dateOfJoining
-                  ? new Date(dto.dateOfJoining)
-                  : null,
-
-              workMode:
-                dto.workMode ??
-                EmployeeWorkMode.ON_FIELD,
-
-              departmentId:
-                dto.departmentId ?? null,
-
-              userId: user.id,
-            },
-
-            include: {
-              department: {
+              const user = await tx.user.create({
+                data: {
+                  email,
+                  passwordHash,
+                  role: Role.EMPLOYEE,
+                },
                 select: {
                   id: true,
-                  name: true,
-                  isActive: true,
+                  email: true,
+                  role: true,
+                  status: true,
                 },
-              },
+              });
+
+              const employee =
+                await tx.employee.create({
+                  data: {
+                    employeeCode,
+                    firstName:
+                      dto.firstName.trim(),
+                    lastName:
+                      dto.lastName.trim(),
+                    phone:
+                      dto.phone?.trim() || null,
+                    jobTitle:
+                      dto.jobTitle?.trim() || null,
+                    dateOfJoining,
+                    workMode:
+                      dto.workMode ??
+                      EmployeeWorkMode.ON_FIELD,
+                    departmentId:
+                      dto.departmentId ?? null,
+                    userId: user.id,
+                  },
+                  include: {
+                    department: {
+                      select: {
+                        id: true,
+                        name: true,
+                        isActive: true,
+                      },
+                    },
+                  },
+                });
+
+              return {
+                user,
+                employee,
+              };
             },
-          });
+            {
+              isolationLevel:
+                Prisma.TransactionIsolationLevel
+                  .Serializable,
+            },
+          );
 
         return {
-          user,
-          employee,
+          success: true,
+          message:
+            'Employee created successfully.',
+          data: {
+            ...result.employee,
+            user: result.user,
+          },
         };
-      },
-    );
+      } catch (error: unknown) {
+        this.logger.error(
+          `Employee creation failed for ${email}. ` +
+            `Attempt ${attempt}/${maximumAttempts}.`,
+          error instanceof Error
+            ? error.stack
+            : String(error),
+        );
+        if (
+          error instanceof
+            Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          const target =
+            this.getPrismaErrorTarget(error);
 
-    return {
-      success: true,
-      message: 'Employee created successfully.',
-      data: {
-        ...result.employee,
-        user: result.user,
-      },
-    };
+          if (target.includes('email')) {
+            throw new ConflictException(
+              'An employee with this email already exists.',
+            );
+          }
+
+          if (
+            target.includes('employeeCode') &&
+            attempt < maximumAttempts
+          ) {
+            continue;
+          }
+
+          if (target.includes('employeeCode')) {
+            throw new ConflictException(
+              'Unable to generate a unique employee code. Please try again.',
+            );
+          }
+
+          throw new ConflictException(
+            'An employee with these details already exists.',
+          );
+        }
+        if (
+          error instanceof
+            Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2003'
+        ) {
+          throw new BadRequestException(
+            'The selected department is no longer available.',
+          );
+        }
+
+        if (
+          error instanceof
+            Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2034'
+        ) {
+          if (attempt < maximumAttempts) {
+            continue;
+          }
+
+          throw new ConflictException(
+            'Another employee was created at the same time. Please try again.',
+          );
+        }
+
+        if (
+          error instanceof
+          Prisma.PrismaClientInitializationError
+        ) {
+          throw new BadRequestException(
+            'The database is currently unavailable.',
+          );
+        }
+
+        throw error;
+      }
+    }
+
+    throw new ConflictException(
+      'Employee creation could not be completed. Please try again.',
+    );
+  }
+
+  private extractEmployeeNumber(
+    employeeCode?: string,
+  ): number {
+    if (!employeeCode) {
+      return 0;
+    }
+
+    const match =
+      /^EMP-(\d+)$/.exec(employeeCode);
+
+    if (!match) {
+      this.logger.warn(
+        `Unexpected employee code format: ${employeeCode}`,
+      );
+
+      return 0;
+    }
+
+    const employeeNumber = Number(match[1]);
+
+    return Number.isSafeInteger(employeeNumber)
+      ? employeeNumber
+      : 0;
+  }
+
+  private formatEmployeeCode(
+    employeeNumber: number,
+  ): string {
+    return `EMP-${String(employeeNumber).padStart(
+      4,
+      '0',
+    )}`;
+  }
+
+  private getPrismaErrorTarget(
+    error: Prisma.PrismaClientKnownRequestError,
+  ): string {
+    const target = error.meta?.target;
+
+    if (Array.isArray(target)) {
+      return target.join(',');
+    }
+
+    return typeof target === 'string'
+      ? target
+      : '';
   }
 
   //get: all
