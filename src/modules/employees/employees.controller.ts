@@ -201,7 +201,7 @@ export class EmployeesController {
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
-  @ApiCookieAuth('cookieAuth')
+  @ApiAuth()
   @ApiOperation({
     summary: 'Create employee',
     description:

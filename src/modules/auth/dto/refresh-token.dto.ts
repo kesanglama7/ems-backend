@@ -1,18 +1,13 @@
-import {
-  IsOptional,
-  IsString,
-} from 'class-validator';
-import {
-  ApiPropertyOptional,
-} from '@nestjs/swagger';
+import { IsNotEmpty, IsString } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class RefreshTokenDto {
-  @ApiPropertyOptional({
+  @ApiProperty({
     description:
-      'Refresh token for BEARER/mobile authentication. Browser clients can omit it because the refresh token is read from the HTTP-only cookie.',
+      'Refresh token returned by login or the previous refresh request.',
     example: 'eyJhbGciOiJIUzI1NiIs...',
   })
-  @IsOptional()
   @IsString()
-  refreshToken?: string;
+  @IsNotEmpty()
+  refreshToken!: string;
 }

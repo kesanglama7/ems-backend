@@ -30,8 +30,6 @@ import {
 
 import {
   DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECONDS,
-  DEFAULT_AUTH_COOKIE_NAME,
-  DEFAULT_REFRESH_COOKIE_NAME,
   DEFAULT_REFRESH_TOKEN_EXPIRES_IN_SECONDS,
 } from './constants/auth.constants';
 
@@ -58,9 +56,7 @@ export class AuthService {
     private readonly configService: ConfigService,
   ) {}
 
-  // =========================================================
   // Login
-  // =========================================================
 
   async login(
     dto: LoginDto,
@@ -109,12 +105,6 @@ export class AuthService {
     /*
      * Every login gets its own
      * unique session.
-     *
-     * Examples:
-     *
-     * Chrome  → session A
-     * Android → session B
-     * iPhone  → session C
      */
     const sessionId =
       randomUUID();
@@ -193,9 +183,7 @@ export class AuthService {
     };
   }
 
-  // =========================================================
   // Refresh
-  // =========================================================
 
   async refresh(
     refreshToken: string,
@@ -356,13 +344,7 @@ export class AuthService {
       );
 
     /*
-     * Refresh token rotation:
-     *
-     * Replace the previous stored hash
-     * with the new refresh token hash.
-     *
-     * The previous refresh token is
-     * therefore unusable immediately.
+     * Refresh token rotation
      */
     await this.prisma.authSession.update({
       where: {
@@ -410,21 +392,13 @@ export class AuthService {
     };
   }
 
-  // =========================================================
   // Logout
-  // =========================================================
 
   async logout(
     accessToken?: string,
   ) {
     /*
      * Logout is idempotent.
-     *
-     * If there is no access token,
-     * simply return success.
-     *
-     * Browser cookies will still be
-     * cleared by the controller.
      */
     if (!accessToken) {
       return {
@@ -438,18 +412,6 @@ export class AuthService {
     }
 
     try {
-      /*
-       * Important:
-       *
-       * ignoreExpiration = true
-       *
-       * This allows a user to logout
-       * even when their access token
-       * has just expired.
-       *
-       * The JWT signature is still
-       * verified.
-       */
       const payload =
         await this.jwtService.verifyAsync<JwtPayload>(
           accessToken,
@@ -498,9 +460,6 @@ export class AuthService {
       }
     } catch {
       /*
-       * Do not expose JWT errors
-       * through logout.
-       *
        * Logout remains successful.
        */
     }
@@ -515,9 +474,7 @@ export class AuthService {
     };
   }
 
-  // =========================================================
   // Change password
-  // =========================================================
 
   async changePassword(
     userId: string,
@@ -612,9 +569,7 @@ export class AuthService {
     };
   }
 
-  // =========================================================
   // Token generation
-  // =========================================================
 
   private async generateTokens(
     user: TokenUser,
@@ -686,9 +641,7 @@ export class AuthService {
     };
   }
 
-  // =========================================================
   // Refresh token hashing
-  // =========================================================
 
   private hashRefreshToken(
     token: string,
@@ -700,9 +653,7 @@ export class AuthService {
       .digest('hex');
   }
 
-  // =========================================================
   // Secrets
-  // =========================================================
 
   getAccessTokenSecret() {
     return this.configService.getOrThrow<string>(
@@ -716,9 +667,7 @@ export class AuthService {
     );
   }
 
-  // =========================================================
   // Expiration
-  // =========================================================
 
   getAccessTokenExpiresInSeconds() {
     const configured =
@@ -760,39 +709,4 @@ export class AuthService {
     return DEFAULT_REFRESH_TOKEN_EXPIRES_IN_SECONDS;
   }
 
-  // =========================================================
-  // Cookie configuration
-  // =========================================================
-
-  getCookieName() {
-    return (
-      this.configService.get<string>(
-        'COOKIE_NAME',
-      ) ??
-      DEFAULT_AUTH_COOKIE_NAME
-    );
-  }
-
-  getRefreshCookieName() {
-    return (
-      this.configService.get<string>(
-        'REFRESH_COOKIE_NAME',
-      ) ??
-      DEFAULT_REFRESH_COOKIE_NAME
-    );
-  }
-
-  getCookieMaxAge() {
-    return (
-      this.getAccessTokenExpiresInSeconds() *
-      1000
-    );
-  }
-
-  getRefreshCookieMaxAge() {
-    return (
-      this.getRefreshTokenExpiresInSeconds() *
-      1000
-    );
-  }
 }
