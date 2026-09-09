@@ -7,21 +7,21 @@ import { LeavesController } from './leaves.controller';
 import { LeavesService } from './leaves.service';
 import { LeaveTypesController } from './leave-types.controller';
 import { LeaveTypesService } from './leave-types.service';
+import { LeaveCalculationService } from './leave-calculation.service';
+import { LeaveBalanceService } from './leave-balance.service';
+import { LeaveSchedulerService } from './leave-scheduler.service';
 
 @Module({
-  imports: [
-    AuthModule,
-  ],
+  imports: [AuthModule],
 
-  controllers: [
-    LeaveTypesController,
-    LeavesController,
-    AdminLeavesController,
-  ],
+  controllers: [LeaveTypesController, LeavesController, AdminLeavesController],
 
   providers: [
     LeaveTypesService,
     LeavesService,
+    LeaveCalculationService,
+    LeaveBalanceService,
+    LeaveSchedulerService,
   ],
 })
 export class LeavesModule {}

@@ -1,20 +1,19 @@
 import {
+  IsEnum,
   IsDateString,
   IsOptional,
   IsString,
   IsUUID,
   Matches,
+  MaxLength,
 } from 'class-validator';
 
-import {
-  ApiProperty,
-  ApiPropertyOptional,
-} from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { LeaveDuration } from '@prisma/client';
 
 export class CreateLeaveRequestDto {
   @ApiProperty({
-    example:
-      'd853e9bc-9dd4-4ec4-8753-9794b9da2bb4',
+    example: 'd853e9bc-9dd4-4ec4-8753-9794b9da2bb4',
     description: 'Active Leave Type UUID.',
   })
   @IsUUID()
@@ -22,32 +21,34 @@ export class CreateLeaveRequestDto {
 
   @ApiProperty({
     example: '2026-09-01',
-    description:
-      'Leave start date in YYYY-MM-DD format.',
+    description: 'Leave start date in YYYY-MM-DD format.',
   })
   @Matches(/^\d{4}-\d{2}-\d{2}$/, {
-    message:
-      'startDate must be in YYYY-MM-DD format.',
+    message: 'startDate must be in YYYY-MM-DD format.',
   })
   @IsDateString()
   startDate!: string;
 
   @ApiProperty({
     example: '2026-09-03',
-    description:
-      'Leave end date in YYYY-MM-DD format.',
+    description: 'Leave end date in YYYY-MM-DD format.',
   })
   @Matches(/^\d{4}-\d{2}-\d{2}$/, {
-    message:
-      'endDate must be in YYYY-MM-DD format.',
+    message: 'endDate must be in YYYY-MM-DD format.',
   })
   @IsDateString()
   endDate!: string;
+
+  @ApiPropertyOptional({ enum: LeaveDuration, default: LeaveDuration.FULL_DAY })
+  @IsOptional()
+  @IsEnum(LeaveDuration)
+  duration: LeaveDuration = LeaveDuration.FULL_DAY;
 
   @ApiPropertyOptional({
     example: 'Personal work.',
   })
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   reason?: string;
 }

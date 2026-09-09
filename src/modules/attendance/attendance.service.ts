@@ -9,7 +9,6 @@ import { AttendanceStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   getNormalizedWorkDate,
-  getTimeInTimezone,
   getWeekdayInTimezone,
 } from './utils/attendance-date.util';
 import { calculateAttendanceMetrics } from './utils/attendance-metrics.util';
@@ -51,6 +50,22 @@ export class AttendanceService {
     const now = new Date();
     const workDate = getNormalizedWorkDate(now, officeSetting.timezone);
     const weekday = getWeekdayInTimezone(now, officeSetting.timezone);
+
+    const approvedLeave = await this.prisma.leaveRequest.findFirst({
+      where: {
+        employeeId: employee.id,
+        status: 'APPROVED',
+        startDate: { lte: workDate },
+        endDate: { gte: workDate },
+      },
+      select: { duration: true },
+    });
+
+    if (approvedLeave?.duration === 'FULL_DAY') {
+      throw new BadRequestException(
+        'You are on approved full-day leave today.',
+      );
+    }
 
     // Working day check
     if (!officeSetting.workingDays.includes(weekday)) {
@@ -121,16 +136,23 @@ export class AttendanceService {
     }
 
     // Build snapshots and calculate metrics
-    const scheduledStartAt = this.buildDateTimeFromTime(
+    let scheduledStartAt = this.buildDateTimeFromTime(
       workDate,
       officeSetting.workStartTime,
       officeSetting.timezone,
     );
-    const scheduledEndAt = this.buildDateTimeFromTime(
+    let scheduledEndAt = this.buildDateTimeFromTime(
       workDate,
       officeSetting.workEndTime,
       officeSetting.timezone,
     );
+    if (approvedLeave) {
+      const midpoint = new Date(
+        (scheduledStartAt.getTime() + scheduledEndAt.getTime()) / 2,
+      );
+      if (approvedLeave.duration === 'FIRST_HALF') scheduledStartAt = midpoint;
+      if (approvedLeave.duration === 'SECOND_HALF') scheduledEndAt = midpoint;
+    }
     const scheduledMinutes = Math.floor(
       (scheduledEndAt.getTime() - scheduledStartAt.getTime()) / 60000,
     );
@@ -389,8 +411,29 @@ export class AttendanceService {
         checkOutDistanceMeters: true,
       },
     });
+    const leave = await this.prisma.leaveRequest.findFirst({
+      where: {
+        employeeId: employee.id,
+        status: 'APPROVED',
+        startDate: { lte: workDate },
+        endDate: { gte: workDate },
+      },
+      select: {
+        id: true,
+        duration: true,
+        requestedDays: true,
+        leaveType: { select: { id: true, name: true } },
+      },
+    });
 
-    return { success: true, data: attendance };
+    return {
+      success: true,
+      data: {
+        attendance,
+        leave: leave ? { isOnLeave: true, ...leave } : { isOnLeave: false },
+        canCheckIn: !leave || leave.duration !== 'FULL_DAY',
+      },
+    };
   }
 
   async getMyAttendance(userId: string, query: MyAttendanceQueryDto) {

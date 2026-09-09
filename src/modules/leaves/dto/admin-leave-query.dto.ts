@@ -6,24 +6,20 @@ import {
   Matches,
 } from 'class-validator';
 
-import {
-  ApiPropertyOptional,
-} from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 import { LeaveStatus } from '@prisma/client';
 
 export class AdminLeaveQueryDto {
   @ApiPropertyOptional({
-    example:
-      'd853e9bc-9dd4-4ec4-8753-9794b9da2bb4',
+    example: 'd853e9bc-9dd4-4ec4-8753-9794b9da2bb4',
   })
   @IsOptional()
   @IsUUID()
   employeeId?: string;
 
   @ApiPropertyOptional({
-    example:
-      'd853e9bc-9dd4-4ec4-8753-9794b9da2bb4',
+    example: 'd853e9bc-9dd4-4ec4-8753-9794b9da2bb4',
   })
   @IsOptional()
   @IsUUID()
@@ -38,8 +34,7 @@ export class AdminLeaveQueryDto {
   status?: LeaveStatus;
 
   @ApiPropertyOptional({
-    example:
-      'd853e9bc-9dd4-4ec4-8753-9794b9da2bb4',
+    example: 'd853e9bc-9dd4-4ec4-8753-9794b9da2bb4',
   })
   @IsOptional()
   @IsUUID()
@@ -50,8 +45,7 @@ export class AdminLeaveQueryDto {
   })
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, {
-    message:
-      'from must be in YYYY-MM-DD format.',
+    message: 'from must be in YYYY-MM-DD format.',
   })
   @IsDateString()
   from?: string;
@@ -61,8 +55,7 @@ export class AdminLeaveQueryDto {
   })
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, {
-    message:
-      'to must be in YYYY-MM-DD format.',
+    message: 'to must be in YYYY-MM-DD format.',
   })
   @IsDateString()
   to?: string;

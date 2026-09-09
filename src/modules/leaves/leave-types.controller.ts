@@ -12,7 +12,6 @@ import {
 
 import {
   ApiConflictResponse,
-  ApiCookieAuth,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
@@ -22,7 +21,6 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -41,9 +39,7 @@ import { ApiAuth } from '../../common/decorators/api-auth.decorator';
 @UseGuards(JwtAuthGuard)
 @ApiAuth()
 export class LeaveTypesController {
-  constructor(
-    private readonly leaveTypesService: LeaveTypesService,
-  ) {}
+  constructor(private readonly leaveTypesService: LeaveTypesService) {}
 
   @Post()
   @UseGuards(RolesGuard)
@@ -52,12 +48,10 @@ export class LeaveTypesController {
     summary: 'Create leave type',
   })
   @ApiCreatedResponse({
-    description:
-      'Leave type created successfully.',
+    description: 'Leave type created successfully.',
   })
   @ApiConflictResponse({
-    description:
-      'Leave type name already exists.',
+    description: 'Leave type name already exists.',
   })
   @ApiUnauthorizedResponse({
     description: 'Authentication required.',
@@ -79,8 +73,7 @@ export class LeaveTypesController {
       'ADMIN users see all leave types. EMPLOYEE users see active leave types only.',
   })
   @ApiOkResponse({
-    description:
-      'Leave types retrieved successfully.',
+    description: 'Leave types retrieved successfully.',
   })
   @ApiUnauthorizedResponse({
     description: 'Authentication required.',
@@ -89,9 +82,7 @@ export class LeaveTypesController {
     @CurrentUser()
     user: RequestUser,
   ) {
-    return this.leaveTypesService.findAll(
-      user.role,
-    );
+    return this.leaveTypesService.findAll(user.role);
   }
 
   @Patch(':id')
@@ -105,12 +96,10 @@ export class LeaveTypesController {
     description: 'Leave Type UUID',
   })
   @ApiOkResponse({
-    description:
-      'Leave type updated successfully.',
+    description: 'Leave type updated successfully.',
   })
   @ApiConflictResponse({
-    description:
-      'Leave type name already exists.',
+    description: 'Leave type name already exists.',
   })
   @ApiNotFoundResponse({
     description: 'Leave type not found.',
@@ -128,10 +117,7 @@ export class LeaveTypesController {
     @Body()
     dto: UpdateLeaveTypeDto,
   ) {
-    return this.leaveTypesService.update(
-      leaveTypeId,
-      dto,
-    );
+    return this.leaveTypesService.update(leaveTypeId, dto);
   }
 
   @Delete(':id')
@@ -139,16 +125,14 @@ export class LeaveTypesController {
   @Roles(Role.ADMIN)
   @ApiOperation({
     summary: 'Deactivate leave type',
-    description:
-      'Deactivates a leave type instead of permanently deleting it.',
+    description: 'Deactivates a leave type instead of permanently deleting it.',
   })
   @ApiParam({
     name: 'id',
     description: 'Leave Type UUID',
   })
   @ApiOkResponse({
-    description:
-      'Leave type deactivated successfully.',
+    description: 'Leave type deactivated successfully.',
   })
   @ApiNotFoundResponse({
     description: 'Leave type not found.',
@@ -163,8 +147,6 @@ export class LeaveTypesController {
     @Param('id', new ParseUUIDPipe())
     leaveTypeId: string,
   ) {
-    return this.leaveTypesService.deactivate(
-      leaveTypeId,
-    );
+    return this.leaveTypesService.deactivate(leaveTypeId);
   }
 }

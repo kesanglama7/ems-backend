@@ -57,6 +57,28 @@ enum LeaveStatus {
   APPROVED
   REJECTED
   CANCELLED
+  AUTO_REJECTED
+}
+
+enum LeaveDuration {
+  FULL_DAY
+  FIRST_HALF
+  SECOND_HALF
+}
+
+enum LeaveSource {
+  EMPLOYEE
+  ADMIN
+}
+
+enum NotificationType {
+  LEAVE_REQUESTED
+  LEAVE_APPROVED
+  LEAVE_REJECTED
+  LEAVE_AUTO_REJECTED
+  LEAVE_CANCELLED
+  LEAVE_REMINDER
+  LEAVE_CREATED_BY_ADMIN
 }
 
 // model User {
@@ -80,8 +102,9 @@ model User {
   role         Role       @default(EMPLOYEE)
   status       UserStatus @default(ACTIVE)
 
-  employee     Employee?
-  authSessions AuthSession[]
+  employee      Employee?
+  authSessions  AuthSession[]
+  notifications Notification[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -143,6 +166,7 @@ model Employee {
   documents     EmployeeDocument[]
   attendance    Attendance[]
   leaveRequests LeaveRequest[]
+  leaveBalances EmployeeLeaveBalance[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -289,7 +313,15 @@ model LeaveType {
 
   isActive Boolean @default(true)
 
+  yearlyAllowance       Decimal @default(0) @db.Decimal(6, 2)
+  hasLimitedBalance     Boolean @default(false)
+  allowHalfDay          Boolean @default(true)
+  isEmployeeRequestable Boolean @default(true)
+  isPaid                Boolean @default(true)
+  isSystem              Boolean @default(false)
+
   leaveRequests LeaveRequest[]
+  leaveBalances EmployeeLeaveBalance[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -309,7 +341,14 @@ model LeaveRequest {
 
   reason String?
 
-  status LeaveStatus @default(PENDING)
+  status           LeaveStatus   @default(PENDING)
+  duration         LeaveDuration @default(FULL_DAY)
+  requestedDays    Decimal       @default(1) @db.Decimal(6, 2)
+  source           LeaveSource   @default(EMPLOYEE)
+  reviewDeadlineAt DateTime?
+  reminderSentAt   DateTime?
+  autoRejectedAt   DateTime?
+  createdByUserId  String?
 
   reviewedByUserId String?
   reviewedAt       DateTime?
@@ -317,4 +356,62 @@ model LeaveRequest {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  notifications Notification[]
+
+  @@index([employeeId, startDate, endDate])
+  @@index([status, reviewDeadlineAt])
+}
+
+model EmployeeLeaveBalance {
+  id String @id @default(uuid())
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  leaveTypeId String
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  year        Int
+  totalDays   Decimal @default(0) @db.Decimal(6, 2)
+  usedDays    Decimal @default(0) @db.Decimal(6, 2)
+  pendingDays Decimal @default(0) @db.Decimal(6, 2)
+
+  adjustments LeaveBalanceAdjustment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([employeeId, leaveTypeId, year])
+  @@index([employeeId, year])
+}
+
+model LeaveBalanceAdjustment {
+  id                     String               @id @default(uuid())
+  employeeLeaveBalanceId String
+  employeeLeaveBalance   EmployeeLeaveBalance @relation(fields: [employeeLeaveBalanceId], references: [id], onDelete: Cascade)
+  adjustmentDays         Decimal              @db.Decimal(6, 2)
+  reason                 String
+  adminUserId            String
+  createdAt              DateTime             @default(now())
+
+  @@index([employeeLeaveBalanceId])
+  @@index([adminUserId])
+}
+
+model Notification {
+  id             String           @id @default(uuid())
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type           NotificationType
+  title          String
+  message        String
+  leaveRequestId String?
+  leaveRequest   LeaveRequest?    @relation(fields: [leaveRequestId], references: [id], onDelete: Cascade)
+  isRead         Boolean          @default(false)
+  readAt         DateTime?
+  createdAt      DateTime         @default(now())
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
 }

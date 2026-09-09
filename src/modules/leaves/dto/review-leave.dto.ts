@@ -1,12 +1,6 @@
-import {
-  IsOptional,
-  IsString,
-  MaxLength,
-} from 'class-validator';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 
-import {
-  ApiPropertyOptional,
-} from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ReviewLeaveDto {
   @ApiPropertyOptional({

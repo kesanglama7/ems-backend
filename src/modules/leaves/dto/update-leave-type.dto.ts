@@ -1,14 +1,15 @@
 import {
+  IsNumber,
   IsBoolean,
   IsOptional,
   IsString,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
-import {
-  ApiPropertyOptional,
-} from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateLeaveTypeDto {
   @ApiPropertyOptional({
@@ -21,8 +22,7 @@ export class UpdateLeaveTypeDto {
   name?: string;
 
   @ApiPropertyOptional({
-    example:
-      'Annual paid leave for employees.',
+    example: 'Annual paid leave for employees.',
     nullable: true,
   })
   @IsOptional()
@@ -36,4 +36,18 @@ export class UpdateLeaveTypeDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ example: 15 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  yearlyAllowance?: number;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() hasLimitedBalance?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() allowHalfDay?: boolean;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isEmployeeRequestable?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() isPaid?: boolean;
 }

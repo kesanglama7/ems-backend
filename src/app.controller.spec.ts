@@ -15,8 +15,11 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('should return the EMS API status', () => {
+      expect(appController.getHello()).toEqual({
+        success: true,
+        message: 'EMS API is running.',
+      });
     });
   });
 });

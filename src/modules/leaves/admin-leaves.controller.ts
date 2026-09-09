@@ -1,422 +1,122 @@
 import {
-    Body,
+  Body,
   Controller,
   Get,
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
-
-import {
-  ApiBadRequestResponse,
-  ApiCookieAuth,
-  ApiForbiddenResponse,
-  ApiNotFoundResponse,
-  ApiOkResponse,
-  ApiOperation,
-  ApiParam,
-  ApiTags,
-  ApiUnauthorizedResponse,
-} from '@nestjs/swagger';
-
-
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Role } from '@prisma/client';
+import { ApiAuth } from '../../common/decorators/api-auth.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-
-import { AdminLeaveQueryDto } from './dto/admin-leave-query.dto';
-import { LeavesService } from './leaves.service';
 import { RolesGuard } from '../../common/guards/role.guard';
-import { Role } from '@prisma/client';
-import { ReviewLeaveDto } from './dto/review-leave.dto';
 import type { RequestUser } from '../../common/interfaces/request-user.interface';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { ApiAuth } from '../../common/decorators/api-auth.decorator';
+import { AdjustBalanceDto } from './dto/adjust-balance.dto';
+import { AdminCreateLeaveDto } from './dto/admin-create-leave.dto';
+import { AdminLeaveQueryDto } from './dto/admin-leave-query.dto';
+import { InitializeBalancesDto } from './dto/initialize-balances.dto';
+import { LeaveBalanceQueryDto } from './dto/leave-balance-query.dto';
+import { ReviewLeaveDto } from './dto/review-leave.dto';
+import { LeaveBalanceService } from './leave-balance.service';
+import { LeavesService } from './leaves.service';
 
 @ApiTags('Admin Leaves')
+@ApiAuth()
 @Controller('admin/leaves')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN)
-@ApiAuth()
 export class AdminLeavesController {
   constructor(
-    private readonly leavesService: LeavesService,
+    private readonly leaves: LeavesService,
+    private readonly balances: LeaveBalanceService,
   ) {}
-
-  @Get()
-  @ApiOperation({
-    summary: 'List employee leave requests',
-    description:
-      'Returns leave requests for ADMIN users with optional employee, department, leave type, status, and date-range filters.',
-  })
-  @ApiOkResponse({
-    description:
-      'Leave requests retrieved successfully.',
-    schema: {
-      example: {
-        success: true,
-        data: [
-          {
-            id: 'leave-request-uuid',
-
-            startDate:
-              '2026-09-01T00:00:00.000Z',
-
-            endDate:
-              '2026-09-03T00:00:00.000Z',
-
-            reason: 'Personal work.',
-            status: 'PENDING',
-
-            reviewedByUserId: null,
-            reviewedAt: null,
-            reviewNote: null,
-
-            leaveType: {
-              id: 'leave-type-uuid',
-              name: 'Annual Leave',
-            },
-
-            employee: {
-              id: 'employee-uuid',
-              employeeCode: 'EMP-0001',
-              firstName: 'John',
-              lastName: 'Doe',
-              jobTitle:
-                'Software Developer',
-
-              department: {
-                id: 'department-uuid',
-                name: 'Engineering',
-              },
-
-              user: {
-                email:
-                  'john@example.com',
-                status: 'ACTIVE',
-              },
-            },
-
-            createdAt:
-              '2026-08-26T03:00:00.000Z',
-
-            updatedAt:
-              '2026-08-26T03:00:00.000Z',
-          },
-        ],
-      },
-    },
-  })
-  @ApiBadRequestResponse({
-    description:
-      'Invalid filters or from date is after to date.',
-  })
-  @ApiUnauthorizedResponse({
-    description:
-      'Authentication cookie is missing or invalid.',
-  })
-  @ApiForbiddenResponse({
-    description:
-      'Authenticated user does not have ADMIN role.',
-  })
-  findAll(
-    @Query()
-    query: AdminLeaveQueryDto,
-  ) {
-    return this.leavesService
-      .getAdminLeaveRequests(query);
+  @Get('summary')
+  @ApiOperation({ summary: 'Get leave dashboard summary' })
+  summary(@Query() query: LeaveBalanceQueryDto) {
+    return this.leaves.summary(query.year);
   }
-
-    @Get(':leaveId')
-    @ApiOperation({
-    summary: 'Get leave request details',
-    description:
-        'Returns a single employee leave request for an ADMIN user.',
-    })
-    @ApiParam({
-    name: 'leaveId',
-    description: 'Leave Request UUID',
-    example:
-        'd853e9bc-9dd4-4ec4-8753-9794b9da2bb4',
-    })
-    @ApiOkResponse({
-    description:
-        'Leave request retrieved successfully.',
-    schema: {
-        example: {
-        success: true,
-
-        data: {
-            id: 'leave-request-uuid',
-
-            startDate:
-            '2026-09-01T00:00:00.000Z',
-
-            endDate:
-            '2026-09-03T00:00:00.000Z',
-
-            reason: 'Personal work.',
-
-            status: 'PENDING',
-
-            reviewedByUserId: null,
-            reviewedAt: null,
-            reviewNote: null,
-
-            leaveType: {
-            id: 'leave-type-uuid',
-            name: 'Annual Leave',
-            description:
-                'Annual paid leave for employees.',
-            isActive: true,
-            },
-
-            employee: {
-            id: 'employee-uuid',
-            employeeCode: 'EMP-0001',
-            firstName: 'John',
-            lastName: 'Doe',
-            phone: '9800000000',
-            jobTitle: 'Software Developer',
-            dateOfJoining:
-                '2026-01-01T00:00:00.000Z',
-
-            department: {
-                id: 'department-uuid',
-                name: 'Engineering',
-            },
-
-            user: {
-                email: 'john@example.com',
-                status: 'ACTIVE',
-            },
-            },
-
-            createdAt:
-            '2026-08-26T03:00:00.000Z',
-
-            updatedAt:
-            '2026-08-26T03:00:00.000Z',
-        },
-        },
-    },
-    })
-    @ApiUnauthorizedResponse({
-    description:
-        'Authentication cookie is missing or invalid.',
-    })
-    @ApiForbiddenResponse({
-    description:
-        'Authenticated user does not have ADMIN role.',
-    })
-    @ApiNotFoundResponse({
-    description:
-        'Leave request was not found.',
-    })
-    getById(
-    @Param(
-        'leaveId',
-        new ParseUUIDPipe(),
-    )
-    leaveId: string,
-    ) {
-    return this.leavesService
-        .getAdminLeaveRequestById(
-        leaveId,
-        );
-    }
-
-
-    @Patch(':leaveId/approve')
-@ApiOperation({
-  summary: 'Approve leave request',
-  description:
-    'Approves a PENDING leave request and stores the reviewing ADMIN metadata.',
-})
-@ApiOkResponse({
-  description:
-    'Leave request approved successfully.',
-  schema: {
-    example: {
-      success: true,
-      message:
-        'Leave request approved successfully.',
-      data: {
-        id: 'leave-request-uuid',
-
-        startDate:
-          '2026-09-01T00:00:00.000Z',
-
-        endDate:
-          '2026-09-03T00:00:00.000Z',
-
-        reason:
-          'Personal work.',
-
-        status:
-          'APPROVED',
-
-        reviewedByUserId:
-          'admin-user-uuid',
-
-        reviewedAt:
-          '2026-08-26T04:00:00.000Z',
-
-        reviewNote:
-          'Approved.',
-
-        leaveType: {
-          id: 'leave-type-uuid',
-          name: 'Annual Leave',
-        },
-
-        employee: {
-          id: 'employee-uuid',
-          employeeCode: 'EMP-0001',
-          firstName: 'John',
-          lastName: 'Doe',
-
-          department: {
-            id: 'department-uuid',
-            name: 'Engineering',
-          },
-        },
-      },
-    },
-  },
-})
-@ApiBadRequestResponse({
-  description:
-    'Leave request is not in PENDING status.',
-})
-@ApiUnauthorizedResponse({
-  description:
-    'Authentication cookie is missing or invalid.',
-})
-@ApiForbiddenResponse({
-  description:
-    'Authenticated user does not have ADMIN role.',
-})
-@ApiNotFoundResponse({
-  description:
-    'Leave request was not found.',
-})
-approve(
-  @Param(
-    'leaveId',
-    new ParseUUIDPipe(),
-  )
-  leaveId: string,
-
-  @CurrentUser()
-  user: RequestUser,
-
-  @Body()
-  dto: ReviewLeaveDto,
-) {
-  return this.leavesService
-    .approveLeaveRequest(
-      leaveId,
+  @Post('balances/initialize')
+  @ApiOperation({ summary: 'Initialize yearly balances' })
+  initialize(@Body() dto: InitializeBalancesDto) {
+    return this.balances.initialize(dto.year);
+  }
+  @Get('balances')
+  @ApiOperation({ summary: 'Get all employee leave balances' })
+  allBalances(@Query() query: LeaveBalanceQueryDto) {
+    return this.balances.getAllForAdmin(query.year);
+  }
+  @Get('employees/:employeeId/balance')
+  @ApiOperation({ summary: 'Get employee leave balance' })
+  employeeBalance(
+    @Param('employeeId', ParseUUIDPipe) id: string,
+    @Query() query: LeaveBalanceQueryDto,
+  ) {
+    return this.balances.getForAdmin(id, query.year);
+  }
+  @Patch('employees/:employeeId/balance/:leaveTypeId')
+  @ApiOperation({ summary: 'Adjust employee leave balance' })
+  adjust(
+    @CurrentUser() user: RequestUser,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+    @Param('leaveTypeId', ParseUUIDPipe) leaveTypeId: string,
+    @Query() query: LeaveBalanceQueryDto,
+    @Body() dto: AdjustBalanceDto,
+  ) {
+    return this.balances.adjust(
+      employeeId,
+      leaveTypeId,
+      query.year,
+      dto.adjustmentDays,
+      dto.reason,
       user.id,
-      dto,
     );
-}
-
-@Patch(':leaveId/reject')
-@ApiOperation({
-  summary: 'Reject leave request',
-  description:
-    'Rejects a PENDING leave request and stores the reviewing ADMIN metadata.',
-})
-@ApiOkResponse({
-  description:
-    'Leave request rejected successfully.',
-  schema: {
-    example: {
-      success: true,
-
-      message:
-        'Leave request rejected successfully.',
-
-      data: {
-        id: 'leave-request-uuid',
-
-        startDate:
-          '2026-09-01T00:00:00.000Z',
-
-        endDate:
-          '2026-09-03T00:00:00.000Z',
-
-        reason:
-          'Personal work.',
-
-        status:
-          'REJECTED',
-
-        reviewedByUserId:
-          'admin-user-uuid',
-
-        reviewedAt:
-          '2026-08-26T04:00:00.000Z',
-
-        reviewNote:
-          'Leave cannot be approved during the release period.',
-
-        leaveType: {
-          id: 'leave-type-uuid',
-          name: 'Annual Leave',
-        },
-
-        employee: {
-          id: 'employee-uuid',
-          employeeCode: 'EMP-0001',
-          firstName: 'John',
-          lastName: 'Doe',
-
-          department: {
-            id: 'department-uuid',
-            name: 'Engineering',
-          },
-        },
-      },
-    },
-  },
-})
-@ApiBadRequestResponse({
-  description:
-    'Leave request is not in PENDING status.',
-})
-@ApiUnauthorizedResponse({
-  description:
-    'Authentication cookie is missing or invalid.',
-})
-@ApiForbiddenResponse({
-  description:
-    'Authenticated user does not have ADMIN role.',
-})
-@ApiNotFoundResponse({
-  description:
-    'Leave request was not found.',
-})
-reject(
-  @Param(
-    'leaveId',
-    new ParseUUIDPipe(),
-  )
-  leaveId: string,
-
-  @CurrentUser()
-  user: RequestUser,
-
-  @Body()
-  dto: ReviewLeaveDto,
-) {
-  return this.leavesService
-    .rejectLeaveRequest(
-      leaveId,
-      user.id,
-      dto,
-    );
-}
+  }
+  @Post()
+  @ApiOperation({ summary: 'Create approved leave for an employee' })
+  create(@CurrentUser() user: RequestUser, @Body() dto: AdminCreateLeaveDto) {
+    return this.leaves.createAdminLeave(user.id, dto);
+  }
+  @Get() @ApiOperation({ summary: 'List employee leave requests' }) findAll(
+    @Query() query: AdminLeaveQueryDto,
+  ) {
+    return this.leaves.getAdminLeaveRequests(query);
+  }
+  @Get(':leaveId')
+  @ApiOperation({ summary: 'Get leave request details' })
+  findOne(@Param('leaveId', ParseUUIDPipe) id: string) {
+    return this.leaves.getAdminLeaveRequestById(id);
+  }
+  @Patch(':leaveId/approve')
+  @ApiOperation({ summary: 'Approve leave request' })
+  approve(
+    @CurrentUser() user: RequestUser,
+    @Param('leaveId', ParseUUIDPipe) id: string,
+    @Body() dto: ReviewLeaveDto,
+  ) {
+    return this.leaves.approveLeaveRequest(id, user.id, dto);
+  }
+  @Patch(':leaveId/reject')
+  @ApiOperation({ summary: 'Reject leave request' })
+  reject(
+    @CurrentUser() user: RequestUser,
+    @Param('leaveId', ParseUUIDPipe) id: string,
+    @Body() dto: ReviewLeaveDto,
+  ) {
+    return this.leaves.rejectLeaveRequest(id, user.id, dto);
+  }
+  @Patch(':leaveId/cancel')
+  @ApiOperation({ summary: 'Cancel approved leave and restore balance' })
+  cancel(
+    @CurrentUser() user: RequestUser,
+    @Param('leaveId', ParseUUIDPipe) id: string,
+    @Body() dto: ReviewLeaveDto,
+  ) {
+    return this.leaves.cancelApprovedLeave(id, user.id, dto);
+  }
 }

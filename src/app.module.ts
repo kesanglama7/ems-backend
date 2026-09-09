@@ -12,12 +12,15 @@ import { OfficeSettingsModule } from './modules/office-settings/office-settings.
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { LeavesModule } from './modules/leaves/leaves.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
-      isGlobal: true
+      isGlobal: true,
     }),
+    ScheduleModule.forRoot(),
 
     PrismaModule,
     HealthModule,
@@ -29,6 +32,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
     AttendanceModule,
     LeavesModule,
     DashboardModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
