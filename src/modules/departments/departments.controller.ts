@@ -35,14 +35,12 @@ import { ApiAuth } from '../../common/decorators/api-auth.decorator';
 @ApiTags('Departments')
 @Controller('departments')
 export class DepartmentsController {
-  constructor(
-    private readonly departmentsService: DepartmentsService,
-  ) {}
+  constructor(private readonly departmentsService: DepartmentsService) {}
   //POST:
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
-@ApiAuth()
+  @ApiAuth()
   @ApiOperation({
     summary: 'Create department',
     description:
@@ -69,20 +67,15 @@ export class DepartmentsController {
     description: 'Request validation failed.',
   })
   @ApiUnauthorizedResponse({
-    description:
-      'Authentication cookie is missing or invalid.',
+    description: 'Authentication cookie is missing or invalid.',
   })
   @ApiForbiddenResponse({
-    description:
-      'Authenticated user does not have ADMIN role.',
+    description: 'Authenticated user does not have ADMIN role.',
   })
   @ApiConflictResponse({
-    description:
-      'A department with the same name already exists.',
+    description: 'A department with the same name already exists.',
   })
-  create(
-    @Body() dto: CreateDepartmentDto,
-  ) {
+  create(@Body() dto: CreateDepartmentDto) {
     return this.departmentsService.create(dto);
   }
 
@@ -123,12 +116,10 @@ export class DepartmentsController {
     },
   })
   @ApiUnauthorizedResponse({
-    description:
-      'Authentication is missing or invalid.',
+    description: 'Authentication is missing or invalid.',
   })
   @ApiForbiddenResponse({
-    description:
-      'Authenticated user does not have enough permissions.',
+    description: 'Authenticated user does not have enough permissions.',
   })
   findAll() {
     return this.departmentsService.findAll();
@@ -166,19 +157,15 @@ export class DepartmentsController {
     },
   })
   @ApiUnauthorizedResponse({
-    description:
-      'Authentication cookie is missing or invalid.',
+    description: 'Authentication cookie is missing or invalid.',
   })
   @ApiForbiddenResponse({
-    description:
-      'Authenticated user does not have ADMIN role.',
+    description: 'Authenticated user does not have ADMIN role.',
   })
   @ApiNotFoundResponse({
     description: 'Department not found.',
   })
-  findOne(
-    @Param('id') id: string,
-  ) {
+  findOne(@Param('id') id: string) {
     return this.departmentsService.findOne(id);
   }
 
@@ -186,7 +173,7 @@ export class DepartmentsController {
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
-@ApiAuth()
+  @ApiAuth()
   @ApiOperation({
     summary: 'Update department',
     description:
@@ -218,36 +205,26 @@ export class DepartmentsController {
     description: 'Request validation failed.',
   })
   @ApiUnauthorizedResponse({
-    description:
-      'Authentication cookie is missing or invalid.',
+    description: 'Authentication cookie is missing or invalid.',
   })
   @ApiForbiddenResponse({
-    description:
-      'Authenticated user does not have ADMIN role.',
+    description: 'Authenticated user does not have ADMIN role.',
   })
   @ApiNotFoundResponse({
     description: 'Department not found.',
   })
   @ApiConflictResponse({
-    description:
-      'A department with the same name already exists.',
+    description: 'A department with the same name already exists.',
   })
-  update(
-    @Param('id') id: string,
-    @Body() dto: UpdateDepartmentDto,
-  ) {
-    return this.departmentsService.update(
-      id,
-      dto,
-    );
+  update(@Param('id') id: string, @Body() dto: UpdateDepartmentDto) {
+    return this.departmentsService.update(id, dto);
   }
-
 
   //Delete: id
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
-@ApiAuth()
+  @ApiAuth()
   @ApiOperation({
     summary: 'Deactivate department',
     description:
@@ -276,19 +253,15 @@ export class DepartmentsController {
     },
   })
   @ApiUnauthorizedResponse({
-    description:
-      'Authentication cookie is missing or invalid.',
+    description: 'Authentication cookie is missing or invalid.',
   })
   @ApiForbiddenResponse({
-    description:
-      'Authenticated user does not have ADMIN role.',
+    description: 'Authenticated user does not have ADMIN role.',
   })
   @ApiNotFoundResponse({
     description: 'Department not found.',
   })
-  deactivate(
-    @Param('id') id: string,
-  ) {
+  deactivate(@Param('id') id: string) {
     return this.departmentsService.deactivate(id);
   }
 }

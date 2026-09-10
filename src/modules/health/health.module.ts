@@ -7,14 +7,8 @@ import { DatabaseHealthIndicator } from './indicators/database.health';
 import { StorageHealthIndicator } from './indicators/storage.health';
 
 @Module({
-  imports: [
-    TerminusModule,
-    StorageModule,
-  ],
+  imports: [TerminusModule, StorageModule],
   controllers: [HealthController],
-  providers: [
-    DatabaseHealthIndicator,
-    StorageHealthIndicator,
-  ],
+  providers: [DatabaseHealthIndicator, StorageHealthIndicator],
 })
 export class HealthModule {}

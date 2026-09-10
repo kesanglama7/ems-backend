@@ -1,4 +1,13 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiOkResponse,
@@ -30,7 +39,9 @@ export class AuthController {
   })
   @ApiOkResponse({ description: 'Login successful.' })
   @ApiBadRequestResponse({ description: 'Invalid request body.' })
-  @ApiUnauthorizedResponse({ description: 'Invalid credentials or inactive account.' })
+  @ApiUnauthorizedResponse({
+    description: 'Invalid credentials or inactive account.',
+  })
   async login(@Body() dto: LoginDto) {
     const result = await this.authService.login(dto);
     return { success: true, message: 'Login successful.', data: result };
@@ -45,7 +56,8 @@ export class AuthController {
   @ApiOkResponse({ description: 'Tokens refreshed successfully.' })
   @ApiBadRequestResponse({ description: 'Refresh token is required.' })
   @ApiUnauthorizedResponse({
-    description: 'Refresh token is invalid, expired, revoked, or belongs to an inactive account.',
+    description:
+      'Refresh token is invalid, expired, revoked, or belongs to an inactive account.',
   })
   async refresh(@Body() dto: RefreshTokenDto) {
     const result = await this.authService.refresh(dto.refreshToken.trim());
@@ -62,7 +74,8 @@ export class AuthController {
   @ApiOperation({ summary: 'Get current authenticated user' })
   @ApiOkResponse({ description: 'Authenticated user.' })
   @ApiUnauthorizedResponse({
-    description: 'Bearer token is missing, invalid, expired, revoked, or the account is inactive.',
+    description:
+      'Bearer token is missing, invalid, expired, revoked, or the account is inactive.',
   })
   getMe(@CurrentUser() user: RequestUser) {
     return { success: true, data: user };
@@ -87,15 +100,26 @@ export class AuthController {
   @ApiAuth()
   @ApiOperation({
     summary: 'Change current user password',
-    description: 'Changes the password and revokes every active session for the user.',
+    description:
+      'Changes the password and revokes every active session for the user.',
   })
   @ApiOkResponse({ description: 'Password changed successfully.' })
-  @ApiBadRequestResponse({ description: 'Validation failed or current password is incorrect.' })
-  @ApiUnauthorizedResponse({
-    description: 'Bearer token is missing, invalid, expired, revoked, or the account is inactive.',
+  @ApiBadRequestResponse({
+    description: 'Validation failed or current password is incorrect.',
   })
-  changePassword(@CurrentUser() user: RequestUser, @Body() dto: ChangePasswordDto) {
-    return this.authService.changePassword(user.id, dto.currentPassword, dto.newPassword);
+  @ApiUnauthorizedResponse({
+    description:
+      'Bearer token is missing, invalid, expired, revoked, or the account is inactive.',
+  })
+  changePassword(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(
+      user.id,
+      dto.currentPassword,
+      dto.newPassword,
+    );
   }
 
   private extractBearerToken(request: Request): string | undefined {

@@ -7,11 +7,11 @@ import {
   LeaveDuration,
   LeaveSource,
   LeaveStatus,
-  NotificationType,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { NotificationsService } from '../notifications/notifications.service';
+import { FirebaseService } from '../firebase/firebase.service';
+import { PushNotificationType as NotificationType } from '../firebase/firebase-notification.types';
 import { AdminLeaveQueryDto } from './dto/admin-leave-query.dto';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { AdminCreateLeaveDto } from './dto/admin-create-leave.dto';
@@ -46,7 +46,7 @@ export class LeavesService {
     private readonly prisma: PrismaService,
     private readonly calculation: LeaveCalculationService,
     private readonly balances: LeaveBalanceService,
-    private readonly notifications: NotificationsService,
+    private readonly notifications: FirebaseService,
   ) {}
 
   async preview(userId: string, dto: CreateLeaveRequestDto) {

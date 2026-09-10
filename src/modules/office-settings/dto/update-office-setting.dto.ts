@@ -45,8 +45,7 @@ export class UpdateOfficeSettingDto {
   })
   @IsOptional()
   @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
-    message:
-      'workStartTime must be in HH:mm format.',
+    message: 'workStartTime must be in HH:mm format.',
   })
   workStartTime?: string;
 
@@ -55,20 +54,12 @@ export class UpdateOfficeSettingDto {
   })
   @IsOptional()
   @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
-    message:
-      'workEndTime must be in HH:mm format.',
+    message: 'workEndTime must be in HH:mm format.',
   })
   workEndTime?: string;
 
   @ApiPropertyOptional({
-    example: [
-      'SUNDAY',
-      'MONDAY',
-      'TUESDAY',
-      'WEDNESDAY',
-      'THURSDAY',
-      'FRIDAY',
-    ],
+    example: ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'],
     enum: WEEK_DAYS,
     isArray: true,
   })
@@ -104,7 +95,7 @@ export class UpdateOfficeSettingDto {
   officeLatitude?: number;
 
   @ApiPropertyOptional({
-    example: 85.323960,
+    example: 85.32396,
     minimum: -180,
     maximum: 180,
   })

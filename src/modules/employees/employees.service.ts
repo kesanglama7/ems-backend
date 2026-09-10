@@ -8,7 +8,6 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 
-
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { EmployeeWorkMode, Prisma, Role, UserStatus } from '@prisma/client';
@@ -17,16 +16,17 @@ import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { UpdateEmployeeStatusDto } from './dto/update-employee-status.dto';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { StorageService } from '../storage/storage.service';
-import { PROFILE_IMAGE_ALLOWED_MIME_TYPES, PROFILE_IMAGE_MAX_SIZE } from './constants/profile-image.constants';
+import {
+  PROFILE_IMAGE_ALLOWED_MIME_TYPES,
+  PROFILE_IMAGE_MAX_SIZE,
+} from './constants/profile-image.constants';
 import { getProfileImageExtension } from './utils/profile-image.util';
 import { randomUUID } from 'crypto';
 import { TeamMemberListQueryDto } from './dto/team-member-list-query.dto';
 
 @Injectable()
 export class EmployeesService {
-    private readonly logger = new Logger(
-        EmployeesService.name,
-    );
+  private readonly logger = new Logger(EmployeesService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly storageService: StorageService,
@@ -36,114 +36,98 @@ export class EmployeesService {
     employeeId: string,
     currentProfileImagePath: string | null,
     file: Express.Multer.File,
-    ) {
+  ) {
     if (!file) {
-        throw new BadRequestException(
-        'Profile image is required.',
-        );
+      throw new BadRequestException('Profile image is required.');
     }
 
     if (
-        !PROFILE_IMAGE_ALLOWED_MIME_TYPES.includes(
-        file.mimetype as
-            (typeof PROFILE_IMAGE_ALLOWED_MIME_TYPES)[number],
-        )
+      !PROFILE_IMAGE_ALLOWED_MIME_TYPES.includes(
+        file.mimetype as (typeof PROFILE_IMAGE_ALLOWED_MIME_TYPES)[number],
+      )
     ) {
-        throw new BadRequestException(
+      throw new BadRequestException(
         'Only JPEG, PNG, and WebP images are allowed.',
-        );
+      );
     }
 
     if (file.size > PROFILE_IMAGE_MAX_SIZE) {
-        throw new BadRequestException(
-        'Profile image must not exceed 5 MB.',
-        );
+      throw new BadRequestException('Profile image must not exceed 5 MB.');
     }
 
-    const extension =
-        getProfileImageExtension(file.mimetype);
+    const extension = getProfileImageExtension(file.mimetype);
 
     if (!extension) {
-        throw new BadRequestException(
-        'Unsupported profile image type.',
-        );
+      throw new BadRequestException('Unsupported profile image type.');
     }
 
     const requestedStoragePath =
-        `employees/${employeeId}/profile/` +
-        `${randomUUID()}.${extension}`;
+      `employees/${employeeId}/profile/` + `${randomUUID()}.${extension}`;
 
-    const uploadedFile =
-        await this.storageService.uploadFile({
-        storagePath: requestedStoragePath,
-        file: file.buffer,
-        contentType: file.mimetype,
-        });
+    const uploadedFile = await this.storageService.uploadFile({
+      storagePath: requestedStoragePath,
+      file: file.buffer,
+      contentType: file.mimetype,
+    });
 
     try {
-        await this.prisma.employee.update({
+      await this.prisma.employee.update({
         where: {
-            id: employeeId,
+          id: employeeId,
         },
         data: {
-            profileImagePath:
-            uploadedFile.storagePath,
+          profileImagePath: uploadedFile.storagePath,
         },
-        });
+      });
     } catch (error) {
-        try {
+      try {
         await this.storageService.deleteFile(
-            uploadedFile.storagePath,
-            uploadedFile.bucket,
+          uploadedFile.storagePath,
+          uploadedFile.bucket,
         );
-        } catch {
+      } catch {
         // Preserve original DB error.
-        }
+      }
 
-        throw error;
+      throw error;
     }
 
     if (
-        currentProfileImagePath &&
-        currentProfileImagePath !==
-        uploadedFile.storagePath
+      currentProfileImagePath &&
+      currentProfileImagePath !== uploadedFile.storagePath
     ) {
-        try {
-        await this.storageService.deleteFile(
-            currentProfileImagePath,
-        );
-        } catch {
+      try {
+        await this.storageService.deleteFile(currentProfileImagePath);
+      } catch {
         // New image is already valid.
         // Old-file cleanup failure should not undo replacement.
-        }
+      }
     }
 
-    const signedUrl =
-        await this.storageService.createSignedUrl(
-        uploadedFile.storagePath,
-        );
+    const signedUrl = await this.storageService.createSignedUrl(
+      uploadedFile.storagePath,
+    );
 
     return {
-        success: true,
-        message: 'Profile image uploaded successfully.',
-        data: {
+      success: true,
+      message: 'Profile image uploaded successfully.',
+      data: {
         profileImageUrl: signedUrl.url,
-        },
+      },
     };
-    }
+  }
 
   //create: employee
   async create(dto: CreateEmployeeDto) {
     const email = dto.email.trim().toLowerCase();
-    const existingUser =
-      await this.prisma.user.findUnique({
-        where: {
-          email,
-        },
-        select: {
-          id: true,
-        },
-      });
+    const existingUser = await this.prisma.user.findUnique({
+      where: {
+        email,
+      },
+      select: {
+        id: true,
+      },
+    });
 
     if (existingUser) {
       throw new ConflictException(
@@ -151,21 +135,18 @@ export class EmployeesService {
       );
     }
     if (dto.departmentId) {
-      const department =
-        await this.prisma.department.findUnique({
-          where: {
-            id: dto.departmentId,
-          },
-          select: {
-            id: true,
-            isActive: true,
-          },
-        });
+      const department = await this.prisma.department.findUnique({
+        where: {
+          id: dto.departmentId,
+        },
+        select: {
+          id: true,
+          isActive: true,
+        },
+      });
 
       if (!department) {
-        throw new NotFoundException(
-          'Department not found.',
-        );
+        throw new NotFoundException('Department not found.');
       }
 
       if (!department.isActive) {
@@ -181,110 +162,85 @@ export class EmployeesService {
       dateOfJoining = new Date(dto.dateOfJoining);
 
       if (Number.isNaN(dateOfJoining.getTime())) {
-        throw new BadRequestException(
-          'The joining date is invalid.',
-        );
+        throw new BadRequestException('The joining date is invalid.');
       }
     }
 
-    const passwordHash = await bcrypt.hash(
-      dto.password,
-      10,
-    );
+    const passwordHash = await bcrypt.hash(dto.password, 10);
 
     const maximumAttempts = 3;
 
-    for (
-      let attempt = 1;
-      attempt <= maximumAttempts;
-      attempt++
-    ) {
+    for (let attempt = 1; attempt <= maximumAttempts; attempt++) {
       try {
-        const result =
-          await this.prisma.$transaction(
-            async (tx) => {
+        const result = await this.prisma.$transaction(
+          async (tx) => {
+            const lastEmployee = await tx.employee.findFirst({
+              orderBy: {
+                employeeCode: 'desc',
+              },
+              select: {
+                employeeCode: true,
+              },
+            });
 
-              const lastEmployee =
-                await tx.employee.findFirst({
-                  orderBy: {
-                    employeeCode: 'desc',
-                  },
+            const lastEmployeeNumber = this.extractEmployeeNumber(
+              lastEmployee?.employeeCode,
+            );
+
+            const employeeCode = this.formatEmployeeCode(
+              lastEmployeeNumber + 1,
+            );
+
+            const user = await tx.user.create({
+              data: {
+                email,
+                passwordHash,
+                role: Role.EMPLOYEE,
+              },
+              select: {
+                id: true,
+                email: true,
+                role: true,
+                status: true,
+              },
+            });
+
+            const employee = await tx.employee.create({
+              data: {
+                employeeCode,
+                firstName: dto.firstName.trim(),
+                lastName: dto.lastName.trim(),
+                phone: dto.phone?.trim() || null,
+                jobTitle: dto.jobTitle?.trim() || null,
+                dateOfJoining,
+                workMode: dto.workMode ?? EmployeeWorkMode.ON_FIELD,
+                departmentId: dto.departmentId ?? null,
+                userId: user.id,
+              },
+              include: {
+                department: {
                   select: {
-                    employeeCode: true,
+                    id: true,
+                    name: true,
+                    isActive: true,
                   },
-                });
-
-              const lastEmployeeNumber =
-                this.extractEmployeeNumber(
-                  lastEmployee?.employeeCode,
-                );
-
-              const employeeCode =
-                this.formatEmployeeCode(
-                  lastEmployeeNumber + 1,
-                );
-
-              const user = await tx.user.create({
-                data: {
-                  email,
-                  passwordHash,
-                  role: Role.EMPLOYEE,
                 },
-                select: {
-                  id: true,
-                  email: true,
-                  role: true,
-                  status: true,
-                },
-              });
+              },
+            });
 
-              const employee =
-                await tx.employee.create({
-                  data: {
-                    employeeCode,
-                    firstName:
-                      dto.firstName.trim(),
-                    lastName:
-                      dto.lastName.trim(),
-                    phone:
-                      dto.phone?.trim() || null,
-                    jobTitle:
-                      dto.jobTitle?.trim() || null,
-                    dateOfJoining,
-                    workMode:
-                      dto.workMode ??
-                      EmployeeWorkMode.ON_FIELD,
-                    departmentId:
-                      dto.departmentId ?? null,
-                    userId: user.id,
-                  },
-                  include: {
-                    department: {
-                      select: {
-                        id: true,
-                        name: true,
-                        isActive: true,
-                      },
-                    },
-                  },
-                });
-
-              return {
-                user,
-                employee,
-              };
-            },
-            {
-              isolationLevel:
-                Prisma.TransactionIsolationLevel
-                  .Serializable,
-            },
-          );
+            return {
+              user,
+              employee,
+            };
+          },
+          {
+            isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          },
+        );
 
         return {
           success: true,
-          message:
-            'Employee created successfully.',
+          message: 'Employee created successfully.',
           data: {
             ...result.employee,
             user: result.user,
@@ -294,17 +250,13 @@ export class EmployeesService {
         this.logger.error(
           `Employee creation failed for ${email}. ` +
             `Attempt ${attempt}/${maximumAttempts}.`,
-          error instanceof Error
-            ? error.stack
-            : String(error),
+          error instanceof Error ? error.stack : String(error),
         );
         if (
-          error instanceof
-            Prisma.PrismaClientKnownRequestError &&
+          error instanceof Prisma.PrismaClientKnownRequestError &&
           error.code === 'P2002'
         ) {
-          const target =
-            this.getPrismaErrorTarget(error);
+          const target = this.getPrismaErrorTarget(error);
 
           if (target.includes('email')) {
             throw new ConflictException(
@@ -312,10 +264,7 @@ export class EmployeesService {
             );
           }
 
-          if (
-            target.includes('employeeCode') &&
-            attempt < maximumAttempts
-          ) {
+          if (target.includes('employeeCode') && attempt < maximumAttempts) {
             continue;
           }
 
@@ -330,8 +279,7 @@ export class EmployeesService {
           );
         }
         if (
-          error instanceof
-            Prisma.PrismaClientKnownRequestError &&
+          error instanceof Prisma.PrismaClientKnownRequestError &&
           error.code === 'P2003'
         ) {
           throw new BadRequestException(
@@ -340,8 +288,7 @@ export class EmployeesService {
         }
 
         if (
-          error instanceof
-            Prisma.PrismaClientKnownRequestError &&
+          error instanceof Prisma.PrismaClientKnownRequestError &&
           error.code === 'P2034'
         ) {
           if (attempt < maximumAttempts) {
@@ -353,10 +300,7 @@ export class EmployeesService {
           );
         }
 
-        if (
-          error instanceof
-          Prisma.PrismaClientInitializationError
-        ) {
+        if (error instanceof Prisma.PrismaClientInitializationError) {
           throw new BadRequestException(
             'The database is currently unavailable.',
           );
@@ -371,38 +315,26 @@ export class EmployeesService {
     );
   }
 
-  private extractEmployeeNumber(
-    employeeCode?: string,
-  ): number {
+  private extractEmployeeNumber(employeeCode?: string): number {
     if (!employeeCode) {
       return 0;
     }
 
-    const match =
-      /^EMP-(\d+)$/.exec(employeeCode);
+    const match = /^EMP-(\d+)$/.exec(employeeCode);
 
     if (!match) {
-      this.logger.warn(
-        `Unexpected employee code format: ${employeeCode}`,
-      );
+      this.logger.warn(`Unexpected employee code format: ${employeeCode}`);
 
       return 0;
     }
 
     const employeeNumber = Number(match[1]);
 
-    return Number.isSafeInteger(employeeNumber)
-      ? employeeNumber
-      : 0;
+    return Number.isSafeInteger(employeeNumber) ? employeeNumber : 0;
   }
 
-  private formatEmployeeCode(
-    employeeNumber: number,
-  ): string {
-    return `EMP-${String(employeeNumber).padStart(
-      4,
-      '0',
-    )}`;
+  private formatEmployeeCode(employeeNumber: number): string {
+    return `EMP-${String(employeeNumber).padStart(4, '0')}`;
   }
 
   private getPrismaErrorTarget(
@@ -414,9 +346,7 @@ export class EmployeesService {
       return target.join(',');
     }
 
-    return typeof target === 'string'
-      ? target
-      : '';
+    return typeof target === 'string' ? target : '';
   }
 
   //get: all
@@ -429,700 +359,622 @@ export class EmployeesService {
     const search = query.search?.trim();
 
     const where = {
-        ...(query.departmentId && {
+      ...(query.departmentId && {
         departmentId: query.departmentId,
-        }),
+      }),
 
-        ...(query.workMode && {
+      ...(query.workMode && {
         workMode: query.workMode,
-        }),
+      }),
 
-        ...(query.status && {
+      ...(query.status && {
         user: {
-            is: {
+          is: {
             status: query.status,
-            },
+          },
         },
-        }),
+      }),
 
-        ...(search && {
+      ...(search && {
         OR: [
-            {
+          {
             firstName: {
-                contains: search,
-                mode: 'insensitive' as const,
+              contains: search,
+              mode: 'insensitive' as const,
             },
-            },
-            {
+          },
+          {
             lastName: {
-                contains: search,
-                mode: 'insensitive' as const,
+              contains: search,
+              mode: 'insensitive' as const,
             },
-            },
-            {
+          },
+          {
             employeeCode: {
-                contains: search,
-                mode: 'insensitive' as const,
+              contains: search,
+              mode: 'insensitive' as const,
             },
-            },
-            {
+          },
+          {
             user: {
-                is: {
+              is: {
                 email: {
-                    contains: search,
-                    mode: 'insensitive' as const,
+                  contains: search,
+                  mode: 'insensitive' as const,
                 },
-                },
+              },
             },
-            },
+          },
         ],
-        }),
+      }),
     };
 
-    const [employees, total] =
-        await this.prisma.$transaction([
-        this.prisma.employee.findMany({
-            where,
-            skip,
-            take: limit,
-
-            orderBy: {
-            createdAt: 'desc',
-            },
-
-            include: {
-            department: {
-                select: {
-                id: true,
-                name: true,
-                isActive: true,
-                },
-            },
-
-            user: {
-                select: {
-                id: true,
-                email: true,
-                role: true,
-                status: true,
-                },
-            },
-            },
-        }),
-
-        this.prisma.employee.count({
-            where,
-        }),
-        ]);
-    
-        const employeesWithProfileImage =
-        await Promise.all(
-            employees.map(async (employee) => {
-            let profileImageUrl: string | null =
-                null;
-
-            if (employee.profileImagePath) {
-                const signedUrl =
-                await this.storageService.createSignedUrl(
-                    employee.profileImagePath,
-                );
-
-                profileImageUrl = signedUrl.url;
-            }
-
-            const {
-                profileImagePath,
-                ...employeeData
-            } = employee;
-
-            return {
-                ...employeeData,
-                profileImageUrl,
-            };
-            }),
-        );
-
-    return {
-        success: true,
-        data: employeesWithProfileImage,
-        meta: {
-            page,
-            limit,
-            total,
-            totalPages: Math.ceil(total / limit),
-        },
-    };
-    }
-
-    //get: id
-    async findOne(employeeId: string) {
-    const employee =
-        await this.prisma.employee.findUnique({
-        where: {
-            id: employeeId,
-        },
-
-        include: {
-            department: {
-            select: {
-                id: true,
-                name: true,
-                description: true,
-                isActive: true,
-            },
-            },
-
-            user: {
-            select: {
-                id: true,
-                email: true,
-                role: true,
-                status: true,
-                createdAt: true,
-                updatedAt: true,
-            },
-            },
-        },
-        });
-
-    if (!employee) {
-        throw new NotFoundException(
-        'Employee not found.',
-        );
-    }
-
-    let profileImageUrl: string | null = null;
-
-    if (employee.profileImagePath) {
-        const signedUrl =
-        await this.storageService.createSignedUrl(
-            employee.profileImagePath,
-        );
-
-        profileImageUrl = signedUrl.url;
-    }
-
-    const {
-        profileImagePath,
-        ...employeeData
-    } = employee;
-
-    return {
-        success: true,
-        data: {
-        ...employeeData,
-        profileImageUrl,
-        },
-    };
-    }
-
-    //Patch: id
-    async update(
-    employeeId: string,
-    dto: UpdateEmployeeDto,
-    ) {
-    const employee =
-        await this.prisma.employee.findUnique({
-        where: {
-            id: employeeId,
-        },
-        select: {
-            id: true,
-        },
-        });
-
-    if (!employee) {
-        throw new NotFoundException(
-        'Employee not found.',
-        );
-    }
-
-    if (
-        dto.departmentId !== undefined &&
-        dto.departmentId !== null
-    ) {
-        const department =
-        await this.prisma.department.findUnique({
-            where: {
-            id: dto.departmentId,
-            },
-            select: {
-            id: true,
-            isActive: true,
-            },
-        });
-
-        if (!department) {
-        throw new NotFoundException(
-            'Department not found.',
-        );
-        }
-
-        if (!department.isActive) {
-        throw new BadRequestException(
-            'Cannot assign employee to an inactive department.',
-        );
-        }
-    }
-
-    const updatedEmployee =
-        await this.prisma.employee.update({
-        where: {
-            id: employeeId,
-        },
-
-        data: {
-            ...(dto.firstName !== undefined && {
-            firstName: dto.firstName.trim(),
-            }),
-
-            ...(dto.lastName !== undefined && {
-            lastName: dto.lastName.trim(),
-            }),
-
-            ...(dto.phone !== undefined && {
-            phone: dto.phone.trim() || null,
-            }),
-
-            ...(dto.jobTitle !== undefined && {
-            jobTitle:
-                dto.jobTitle.trim() || null,
-            }),
-
-            ...(dto.departmentId !== undefined && {
-            departmentId: dto.departmentId,
-            }),
-
-            ...(dto.dateOfJoining !== undefined && {
-            dateOfJoining:
-                dto.dateOfJoining === null
-                ? null
-                : new Date(dto.dateOfJoining),
-            }),
-
-            ...(dto.workMode !== undefined && {
-            workMode: dto.workMode,
-            }),
-        },
-
-        include: {
-            department: {
-            select: {
-                id: true,
-                name: true,
-                isActive: true,
-            },
-            },
-
-            user: {
-            select: {
-                id: true,
-                email: true,
-                role: true,
-                status: true,
-            },
-            },
-        },
-        });
-
-    return {
-        success: true,
-        message: 'Employee updated successfully.',
-        data: updatedEmployee,
-    };
-    }
-
-    //Update status
-    async updateStatus(
-    employeeId: string,
-    dto: UpdateEmployeeStatusDto,
-    ) {
-    const employee =
-        await this.prisma.employee.findUnique({
-        where: {
-            id: employeeId,
-        },
-        select: {
-            id: true,
-            userId: true,
-        },
-        });
-
-    if (!employee) {
-        throw new NotFoundException(
-        'Employee not found.',
-        );
-    }
-
-    const user =
-        await this.prisma.user.update({
-        where: {
-            id: employee.userId,
-        },
-        data: {
-            status: dto.status,
-        },
-        select: {
-            id: true,
-            email: true,
-            role: true,
-            status: true,
-        },
-        });
-
-    return {
-        success: true,
-        message: 'Employee status updated successfully.',
-        data: {
-        employeeId: employee.id,
-        user,
-        },
-    };
-    }
-
-    //GET- employee me only
-    async findMe(userId: string) {
-    const employee =
-        await this.prisma.employee.findUnique({
-        where: {
-            userId,
-        },
-
-        include: {
-            department: {
-            select: {
-                id: true,
-                name: true,
-                description: true,
-                isActive: true,
-            },
-            },
-
-            user: {
-            select: {
-                id: true,
-                email: true,
-                role: true,
-                status: true,
-            },
-            },
-        },
-        });
-
-    if (!employee) {
-        throw new NotFoundException(
-        'Employee profile not found.',
-        );
-    }
-
-    let profileImageUrl: string | null = null;
-
-    if (employee.profileImagePath) {
-        const signedUrl =
-        await this.storageService.createSignedUrl(
-            employee.profileImagePath,
-        );
-
-        profileImageUrl = signedUrl.url;
-    }
-
-    const {
-        profileImagePath,
-        ...employeeData
-        } = employee;
-
-        return {
-        success: true,
-        data: {
-            ...employeeData,
-            profileImageUrl,
-        },
-    };
-    }
-
-    //GET- all active team members
-    async findTeamMembers(query: TeamMemberListQueryDto) {
-    const page = query.page;
-    const limit = query.limit;
-    const skip = (page - 1) * limit;
-    const searchTerms = query.search
-        ?.trim()
-        .split(/\s+/)
-        .filter(Boolean);
-
-    const where: Prisma.EmployeeWhereInput = {
-        ...(query.departmentId && {
-        departmentId: query.departmentId,
-        }),
-        user: {
-        is: {
-            status: UserStatus.ACTIVE,
-        },
-        },
-        ...(searchTerms?.length && {
-        AND: searchTerms.map((term) => ({
-            OR: [
-            {
-                firstName: {
-                contains: term,
-                mode: 'insensitive',
-                },
-            },
-            {
-                lastName: {
-                contains: term,
-                mode: 'insensitive',
-                },
-            },
-            {
-                user: {
-                is: {
-                    email: {
-                    contains: term,
-                    mode: 'insensitive',
-                    },
-                },
-                },
-            },
-            ],
-        })),
-        }),
-    };
-
-    const [teamMembers, total] =
-        await this.prisma.$transaction([
-        this.prisma.employee.findMany({
+    const [employees, total] = await this.prisma.$transaction([
+      this.prisma.employee.findMany({
         where,
         skip,
         take: limit,
-        select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            jobTitle: true,
-            profileImagePath: true,
-            department: {
-            select: {
-                id: true,
-                name: true,
-            },
-            },
-            user: {
-            select: {
-                email: true,
-            },
-            },
-        },
-        orderBy: [
-            { firstName: 'asc' },
-            { lastName: 'asc' },
-        ],
-        }),
-        this.prisma.employee.count({ where }),
-        ]);
 
-    const withProfiles = await Promise.all(
-        teamMembers.map(async (employee) => {
+        orderBy: {
+          createdAt: 'desc',
+        },
+
+        include: {
+          department: {
+            select: {
+              id: true,
+              name: true,
+              isActive: true,
+            },
+          },
+
+          user: {
+            select: {
+              id: true,
+              email: true,
+              role: true,
+              status: true,
+            },
+          },
+        },
+      }),
+
+      this.prisma.employee.count({
+        where,
+      }),
+    ]);
+
+    const employeesWithProfileImage = await Promise.all(
+      employees.map(async (employee) => {
         let profileImageUrl: string | null = null;
 
         if (employee.profileImagePath) {
-            const signedUrl =
-            await this.storageService.createSignedUrl(
-                employee.profileImagePath,
-            );
-            profileImageUrl = signedUrl.url;
+          const signedUrl = await this.storageService.createSignedUrl(
+            employee.profileImagePath,
+          );
+
+          profileImageUrl = signedUrl.url;
         }
 
+        const { profileImagePath, ...employeeData } = employee;
+
         return {
-            id: employee.id,
-            firstName: employee.firstName,
-            lastName: employee.lastName,
-            jobTitle: employee.jobTitle,
-            email: employee.user.email,
-            department: employee.department,
-            profileImageUrl,
+          ...employeeData,
+          profileImageUrl,
         };
-        }),
+      }),
     );
 
     return {
-        success: true,
-        data: withProfiles,
-        meta: {
+      success: true,
+      data: employeesWithProfileImage,
+      meta: {
         page,
         limit,
         total,
         totalPages: Math.ceil(total / limit),
-        },
+      },
     };
-    }
+  }
 
-    //PATCH- me
-    async updateMe(
-    userId: string,
-    dto: UpdateMyProfileDto,
-    ) {
-    const employee =
-        await this.prisma.employee.findUnique({
-        where: {
-            userId,
-        },
-        select: {
+  //get: id
+  async findOne(employeeId: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: {
+        id: employeeId,
+      },
+
+      include: {
+        department: {
+          select: {
             id: true,
+            name: true,
+            description: true,
+            isActive: true,
+          },
         },
-        });
+
+        user: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            status: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+      },
+    });
 
     if (!employee) {
-        throw new NotFoundException(
-        'Employee profile not found.',
-        );
+      throw new NotFoundException('Employee not found.');
     }
 
-    const updatedEmployee =
-        await this.prisma.employee.update({
-        where: {
-            id: employee.id,
-        },
+    let profileImageUrl: string | null = null;
 
-        data: {
-            ...(dto.phone !== undefined && {
-            phone:
-                dto.phone === null
-                ? null
-                : dto.phone.trim() || null,
-            }),
-        },
+    if (employee.profileImagePath) {
+      const signedUrl = await this.storageService.createSignedUrl(
+        employee.profileImagePath,
+      );
 
-        include: {
-            department: {
-            select: {
-                id: true,
-                name: true,
-                description: true,
-                isActive: true,
-            },
-            },
+      profileImageUrl = signedUrl.url;
+    }
 
-            user: {
-            select: {
-                id: true,
-                email: true,
-                role: true,
-                status: true,
-            },
-            },
-        },
-        });
+    const { profileImagePath, ...employeeData } = employee;
 
     return {
-        success: true,
-        message: 'Profile updated successfully.',
-        data: updatedEmployee,
+      success: true,
+      data: {
+        ...employeeData,
+        profileImageUrl,
+      },
     };
-    }
+  }
 
-    //upload own profile
-   async uploadMyProfileImage(
-    userId: string,
-    file: Express.Multer.File,
-    ) {
-    const employee =
-        await this.prisma.employee.findUnique({
-        where: {
-            userId,
-        },
-        select: {
-            id: true,
-            profileImagePath: true,
-        },
-        });
+  //Patch: id
+  async update(employeeId: string, dto: UpdateEmployeeDto) {
+    const employee = await this.prisma.employee.findUnique({
+      where: {
+        id: employeeId,
+      },
+      select: {
+        id: true,
+      },
+    });
 
     if (!employee) {
-        throw new NotFoundException(
-        'Employee profile not found.',
+      throw new NotFoundException('Employee not found.');
+    }
+
+    if (dto.departmentId !== undefined && dto.departmentId !== null) {
+      const department = await this.prisma.department.findUnique({
+        where: {
+          id: dto.departmentId,
+        },
+        select: {
+          id: true,
+          isActive: true,
+        },
+      });
+
+      if (!department) {
+        throw new NotFoundException('Department not found.');
+      }
+
+      if (!department.isActive) {
+        throw new BadRequestException(
+          'Cannot assign employee to an inactive department.',
         );
+      }
+    }
+
+    const updatedEmployee = await this.prisma.employee.update({
+      where: {
+        id: employeeId,
+      },
+
+      data: {
+        ...(dto.firstName !== undefined && {
+          firstName: dto.firstName.trim(),
+        }),
+
+        ...(dto.lastName !== undefined && {
+          lastName: dto.lastName.trim(),
+        }),
+
+        ...(dto.phone !== undefined && {
+          phone: dto.phone.trim() || null,
+        }),
+
+        ...(dto.jobTitle !== undefined && {
+          jobTitle: dto.jobTitle.trim() || null,
+        }),
+
+        ...(dto.departmentId !== undefined && {
+          departmentId: dto.departmentId,
+        }),
+
+        ...(dto.dateOfJoining !== undefined && {
+          dateOfJoining:
+            dto.dateOfJoining === null ? null : new Date(dto.dateOfJoining),
+        }),
+
+        ...(dto.workMode !== undefined && {
+          workMode: dto.workMode,
+        }),
+      },
+
+      include: {
+        department: {
+          select: {
+            id: true,
+            name: true,
+            isActive: true,
+          },
+        },
+
+        user: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Employee updated successfully.',
+      data: updatedEmployee,
+    };
+  }
+
+  //Update status
+  async updateStatus(employeeId: string, dto: UpdateEmployeeStatusDto) {
+    const employee = await this.prisma.employee.findUnique({
+      where: {
+        id: employeeId,
+      },
+      select: {
+        id: true,
+        userId: true,
+      },
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Employee not found.');
+    }
+
+    const user = await this.prisma.user.update({
+      where: {
+        id: employee.userId,
+      },
+      data: {
+        status: dto.status,
+      },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        status: true,
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Employee status updated successfully.',
+      data: {
+        employeeId: employee.id,
+        user,
+      },
+    };
+  }
+
+  //GET- employee me only
+  async findMe(userId: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: {
+        userId,
+      },
+
+      include: {
+        department: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            isActive: true,
+          },
+        },
+
+        user: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Employee profile not found.');
+    }
+
+    let profileImageUrl: string | null = null;
+
+    if (employee.profileImagePath) {
+      const signedUrl = await this.storageService.createSignedUrl(
+        employee.profileImagePath,
+      );
+
+      profileImageUrl = signedUrl.url;
+    }
+
+    const { profileImagePath, ...employeeData } = employee;
+
+    return {
+      success: true,
+      data: {
+        ...employeeData,
+        profileImageUrl,
+      },
+    };
+  }
+
+  //GET- all active team members
+  async findTeamMembers(query: TeamMemberListQueryDto) {
+    const page = query.page;
+    const limit = query.limit;
+    const skip = (page - 1) * limit;
+    const searchTerms = query.search?.trim().split(/\s+/).filter(Boolean);
+
+    const where: Prisma.EmployeeWhereInput = {
+      ...(query.departmentId && {
+        departmentId: query.departmentId,
+      }),
+      user: {
+        is: {
+          status: UserStatus.ACTIVE,
+        },
+      },
+      ...(searchTerms?.length && {
+        AND: searchTerms.map((term) => ({
+          OR: [
+            {
+              firstName: {
+                contains: term,
+                mode: 'insensitive',
+              },
+            },
+            {
+              lastName: {
+                contains: term,
+                mode: 'insensitive',
+              },
+            },
+            {
+              user: {
+                is: {
+                  email: {
+                    contains: term,
+                    mode: 'insensitive',
+                  },
+                },
+              },
+            },
+          ],
+        })),
+      }),
+    };
+
+    const [teamMembers, total] = await this.prisma.$transaction([
+      this.prisma.employee.findMany({
+        where,
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          jobTitle: true,
+          profileImagePath: true,
+          department: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          user: {
+            select: {
+              email: true,
+            },
+          },
+        },
+        orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+      }),
+      this.prisma.employee.count({ where }),
+    ]);
+
+    const withProfiles = await Promise.all(
+      teamMembers.map(async (employee) => {
+        let profileImageUrl: string | null = null;
+
+        if (employee.profileImagePath) {
+          const signedUrl = await this.storageService.createSignedUrl(
+            employee.profileImagePath,
+          );
+          profileImageUrl = signedUrl.url;
+        }
+
+        return {
+          id: employee.id,
+          firstName: employee.firstName,
+          lastName: employee.lastName,
+          jobTitle: employee.jobTitle,
+          email: employee.user.email,
+          department: employee.department,
+          profileImageUrl,
+        };
+      }),
+    );
+
+    return {
+      success: true,
+      data: withProfiles,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  //PATCH- me
+  async updateMe(userId: string, dto: UpdateMyProfileDto) {
+    const employee = await this.prisma.employee.findUnique({
+      where: {
+        userId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Employee profile not found.');
+    }
+
+    const updatedEmployee = await this.prisma.employee.update({
+      where: {
+        id: employee.id,
+      },
+
+      data: {
+        ...(dto.phone !== undefined && {
+          phone: dto.phone === null ? null : dto.phone.trim() || null,
+        }),
+      },
+
+      include: {
+        department: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            isActive: true,
+          },
+        },
+
+        user: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Profile updated successfully.',
+      data: updatedEmployee,
+    };
+  }
+
+  //upload own profile
+  async uploadMyProfileImage(userId: string, file: Express.Multer.File) {
+    const employee = await this.prisma.employee.findUnique({
+      where: {
+        userId,
+      },
+      select: {
+        id: true,
+        profileImagePath: true,
+      },
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Employee profile not found.');
     }
 
     return this.uploadProfileImage(
-        employee.id,
-        employee.profileImagePath,
-        file,
+      employee.id,
+      employee.profileImagePath,
+      file,
     );
-    }
+  }
 
-    //DELETE own profile
-    async deleteMyProfileImage(userId: string) {
-    const employee =
-        await this.prisma.employee.findUnique({
-        where: {
-            userId,
-        },
-        select: {
-            id: true,
-            profileImagePath: true,
-        },
-        });
+  //DELETE own profile
+  async deleteMyProfileImage(userId: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: {
+        userId,
+      },
+      select: {
+        id: true,
+        profileImagePath: true,
+      },
+    });
 
     if (!employee) {
-        throw new NotFoundException(
-        'Employee profile not found.',
-        );
+      throw new NotFoundException('Employee profile not found.');
     }
 
     if (!employee.profileImagePath) {
-        throw new NotFoundException(
-        'Profile image not found.',
-        );
+      throw new NotFoundException('Profile image not found.');
     }
 
     const storagePath = employee.profileImagePath;
 
-    await this.storageService.deleteFile(
-        storagePath,
-    );
+    await this.storageService.deleteFile(storagePath);
 
     await this.prisma.employee.update({
-        where: {
+      where: {
         id: employee.id,
-        },
-        data: {
+      },
+      data: {
         profileImagePath: null,
-        },
+      },
     });
 
     return {
-        success: true,
-        message: 'Profile image deleted successfully.',
-        data: null,
+      success: true,
+      message: 'Profile image deleted successfully.',
+      data: null,
     };
-    }
+  }
 
-    //Upload employee profile via admin
-    async uploadEmployeeProfileImage(
+  //Upload employee profile via admin
+  async uploadEmployeeProfileImage(
     employeeId: string,
     file: Express.Multer.File,
-    ) {
-    const employee =
-        await this.prisma.employee.findUnique({
-        where: {
-            id: employeeId,
-        },
-        select: {
-            id: true,
-            profileImagePath: true,
-        },
-        });
+  ) {
+    const employee = await this.prisma.employee.findUnique({
+      where: {
+        id: employeeId,
+      },
+      select: {
+        id: true,
+        profileImagePath: true,
+      },
+    });
 
     if (!employee) {
-        throw new NotFoundException(
-        'Employee not found.',
-        );
+      throw new NotFoundException('Employee not found.');
     }
 
     return this.uploadProfileImage(
-        employee.id,
-        employee.profileImagePath,
-        file,
+      employee.id,
+      employee.profileImagePath,
+      file,
     );
-    }
+  }
 }

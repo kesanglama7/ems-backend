@@ -1,4 +1,3 @@
-
 import {
   BadRequestException,
   ForbiddenException,
@@ -34,649 +33,574 @@ export class DocumentsService {
     userId: string,
     dto: UploadDocumentDto,
     file: Express.Multer.File,
-    ) {
-    const employee =
-        await this.prisma.employee.findUnique({
-        where: {
-            userId,
-        },
-        select: {
-            id: true,
-        },
-        });
+  ) {
+    const employee = await this.prisma.employee.findUnique({
+      where: {
+        userId,
+      },
+      select: {
+        id: true,
+      },
+    });
 
     if (!employee) {
-        throw new NotFoundException(
-        'Employee profile not found.',
-        );
+      throw new NotFoundException('Employee profile not found.');
     }
 
     if (!file) {
-        throw new BadRequestException(
-        'Document file is required.',
-        );
+      throw new BadRequestException('Document file is required.');
     }
 
     if (
-        !DOCUMENT_ALLOWED_MIME_TYPES.includes(
-        file.mimetype as
-            (typeof DOCUMENT_ALLOWED_MIME_TYPES)[number],
-        )
+      !DOCUMENT_ALLOWED_MIME_TYPES.includes(
+        file.mimetype as (typeof DOCUMENT_ALLOWED_MIME_TYPES)[number],
+      )
     ) {
-        throw new BadRequestException(
+      throw new BadRequestException(
         'Only PDF, JPEG, and PNG documents are allowed.',
-        );
+      );
     }
 
     if (file.size > DOCUMENT_MAX_SIZE) {
-        throw new BadRequestException(
-        'Document must not exceed 10 MB.',
-        );
+      throw new BadRequestException('Document must not exceed 10 MB.');
     }
 
-    const extension =
-        getDocumentFileExtension(file.mimetype);
+    const extension = getDocumentFileExtension(file.mimetype);
 
     if (!extension) {
-        throw new BadRequestException(
-        'Unsupported document type.',
-        );
+      throw new BadRequestException('Unsupported document type.');
     }
 
     const requestedStoragePath =
-        `employees/${employee.id}/documents/` +
-        `${randomUUID()}.${extension}`;
+      `employees/${employee.id}/documents/` + `${randomUUID()}.${extension}`;
 
-    const uploadedFile =
-        await this.storageService.uploadFile({
-        storagePath: requestedStoragePath,
-        file: file.buffer,
-        contentType: file.mimetype,
-        });
+    const uploadedFile = await this.storageService.uploadFile({
+      storagePath: requestedStoragePath,
+      file: file.buffer,
+      contentType: file.mimetype,
+    });
 
     try {
-        const document =
-        await this.prisma.employeeDocument.create({
-            data: {
-            employeeId: employee.id,
+      const document = await this.prisma.employeeDocument.create({
+        data: {
+          employeeId: employee.id,
 
-            type: dto.type,
-            title: dto.title.trim(),
+          type: dto.type,
+          title: dto.title.trim(),
 
-            originalFileName:
-                file.originalname,
+          originalFileName: file.originalname,
 
-            mimeType: file.mimetype,
-            fileSize: file.size,
+          mimeType: file.mimetype,
+          fileSize: file.size,
 
-            bucket: uploadedFile.bucket,
-            storagePath:
-                uploadedFile.storagePath,
+          bucket: uploadedFile.bucket,
+          storagePath: uploadedFile.storagePath,
 
-            // status omitted intentionally
-            // Prisma default = PENDING
-            },
-        });
+          // status omitted intentionally
+          // Prisma default = PENDING
+        },
+      });
 
-        return {
+      return {
         success: true,
         message: 'Document uploaded successfully.',
         data: document,
-        };
+      };
     } catch (error) {
-        try {
+      try {
         await this.storageService.deleteFile(
-            uploadedFile.storagePath,
-            uploadedFile.bucket,
+          uploadedFile.storagePath,
+          uploadedFile.bucket,
         );
-        } catch {
+      } catch {
         // Preserve the original database error.
-        }
+      }
 
-        throw error;
+      throw error;
     }
-    }
+  }
 
-    //Get documents
-    async findMyDocuments(userId: string) {
-        const employee =
-            await this.prisma.employee.findUnique({
-            where: {
-                userId,
-            },
-            select: {
-                id: true,
-            },
-            });
-
-        if (!employee) {
-            throw new NotFoundException(
-            'Employee profile not found.',
-            );
-        }
-
-        const documents =
-            await this.prisma.employeeDocument.findMany({
-            where: {
-                employeeId: employee.id,
-            },
-
-            orderBy: {
-                createdAt: 'desc',
-            },
-
-            select: {
-                id: true,
-                type: true,
-                title: true,
-                originalFileName: true,
-                mimeType: true,
-                fileSize: true,
-                status: true,
-                reviewedByUserId: true,
-                reviewedAt: true,
-                reviewNote: true,
-                createdAt: true,
-                updatedAt: true,
-            },
-            });
-
-        return {
-            success: true,
-            data: documents,
-        };
-    }
-
-    //Get document by id
-    async findMyDocumentById(
-    userId: string,
-    documentId: string,
-    ) {
-    const employee =
-        await this.prisma.employee.findUnique({
-        where: {
-            userId,
-        },
-        select: {
-            id: true,
-        },
-        });
+  //Get documents
+  async findMyDocuments(userId: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: {
+        userId,
+      },
+      select: {
+        id: true,
+      },
+    });
 
     if (!employee) {
-        throw new NotFoundException(
-        'Employee profile not found.',
-        );
+      throw new NotFoundException('Employee profile not found.');
     }
 
-    const document =
-        await this.prisma.employeeDocument.findFirst({
-        where: {
-            id: documentId,
-            employeeId: employee.id,
-        },
+    const documents = await this.prisma.employeeDocument.findMany({
+      where: {
+        employeeId: employee.id,
+      },
 
-        select: {
-            id: true,
-            type: true,
-            title: true,
-            originalFileName: true,
-            mimeType: true,
-            fileSize: true,
-            status: true,
-            reviewedByUserId: true,
-            reviewedAt: true,
-            reviewNote: true,
-            createdAt: true,
-            updatedAt: true,
-        },
-        });
+      orderBy: {
+        createdAt: 'desc',
+      },
 
-    if (!document) {
-        throw new NotFoundException(
-        'Document not found.',
-        );
-    }
-
-    return {
-        success: true,
-        data: document,
-    };
-    }
-
-    //get document file
-   async getMyDocumentFile(
-    userId: string,
-    documentId: string,
-    ) {
-    const employee =
-        await this.prisma.employee.findUnique({
-        where: {
-            userId,
-        },
-        select: {
-            id: true,
-        },
-        });
-
-    if (!employee) {
-        throw new NotFoundException(
-        'Employee profile not found.',
-        );
-    }
-
-    const document =
-        await this.prisma.employeeDocument.findFirst({
-        where: {
-            id: documentId,
-            employeeId: employee.id,
-        },
-        select: {
-            id: true,
-            bucket: true,
-            storagePath: true,
-            originalFileName: true,
-            mimeType: true,
-        },
-        });
-
-    if (!document) {
-        throw new NotFoundException(
-        'Document not found.',
-        );
-    }
-
-    const signedUrl =
-        await this.storageService.createSignedUrl(
-        document.storagePath,
-        600,
-        document.bucket,
-        );
-
-    return {
-        success: true,
-        data: {
-        url: signedUrl.url,
-        expiresIn: signedUrl.expiresIn,
-        originalFileName:
-            document.originalFileName,
-        mimeType: document.mimeType,
-        },
-    };
-    }
-
-    //Delete document
-    async deleteMyDocument(
-    userId: string,
-    documentId: string,
-    ) {
-    const employee =
-        await this.prisma.employee.findUnique({
-        where: {
-            userId,
-        },
-        select: {
-            id: true,
-        },
-        });
-
-    if (!employee) {
-        throw new NotFoundException(
-        'Employee profile not found.',
-        );
-    }
-
-    const document =
-        await this.prisma.employeeDocument.findFirst({
-        where: {
-            id: documentId,
-            employeeId: employee.id,
-        },
-
-        select: {
-            id: true,
-            status: true,
-            bucket: true,
-            storagePath: true,
-        },
-        });
-
-    if (!document) {
-        throw new NotFoundException(
-        'Document not found.',
-        );
-    }
-
-    if (
-        document.status === DocumentStatus.VERIFIED
-    ) {
-        throw new ForbiddenException(
-        'Verified documents cannot be deleted by employees.',
-        );
-    }
-
-    await this.storageService.deleteFile(
-        document.storagePath,
-        document.bucket,
-    );
-
-    await this.prisma.employeeDocument.delete({
-        where: {
-        id: document.id,
-        },
+      select: {
+        id: true,
+        type: true,
+        title: true,
+        originalFileName: true,
+        mimeType: true,
+        fileSize: true,
+        status: true,
+        reviewedByUserId: true,
+        reviewedAt: true,
+        reviewNote: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
     return {
-        success: true,
-        message: 'Document deleted successfully.',
-        data: null,
+      success: true,
+      data: documents,
     };
+  }
+
+  //Get document by id
+  async findMyDocumentById(userId: string, documentId: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: {
+        userId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Employee profile not found.');
     }
 
-    //find all for admin
-    async findAllForAdmin(
-    query: AdminDocumentListQueryDto,
-    ) {
-    const documents =
-        await this.prisma.employeeDocument.findMany({
-        where: {
-            ...(query.employeeId && {
-            employeeId: query.employeeId,
-            }),
+    const document = await this.prisma.employeeDocument.findFirst({
+      where: {
+        id: documentId,
+        employeeId: employee.id,
+      },
 
-            ...(query.status && {
-            status: query.status,
-            }),
-
-            ...(query.type && {
-            type: query.type,
-            }),
-        },
-
-        orderBy: {
-            createdAt: 'desc',
-        },
-
-        select: {
-            id: true,
-            type: true,
-            title: true,
-            originalFileName: true,
-            mimeType: true,
-            fileSize: true,
-            status: true,
-            reviewedByUserId: true,
-            reviewedAt: true,
-            reviewNote: true,
-            createdAt: true,
-            updatedAt: true,
-
-            employee: {
-            select: {
-                id: true,
-                employeeCode: true,
-                firstName: true,
-                lastName: true,
-
-                user: {
-                select: {
-                    email: true,
-                    status: true,
-                },
-                },
-
-                department: {
-                select: {
-                    id: true,
-                    name: true,
-                },
-                },
-            },
-            },
-        },
-        });
-
-    return {
-        success: true,
-        data: documents,
-    };
-    }
-
-    //GET document file by id for admin
-    async findOneForAdmin(documentId: string) {
-        const document =
-            await this.prisma.employeeDocument.findUnique({
-            where: {
-                id: documentId,
-            },
-
-            select: {
-                id: true,
-                type: true,
-                title: true,
-                originalFileName: true,
-                mimeType: true,
-                fileSize: true,
-                status: true,
-                reviewedByUserId: true,
-                reviewedAt: true,
-                reviewNote: true,
-                createdAt: true,
-                updatedAt: true,
-
-                employee: {
-                select: {
-                    id: true,
-                    employeeCode: true,
-                    firstName: true,
-                    lastName: true,
-                    phone: true,
-                    jobTitle: true,
-
-                    user: {
-                    select: {
-                        email: true,
-                        status: true,
-                    },
-                    },
-
-                    department: {
-                    select: {
-                        id: true,
-                        name: true,
-                    },
-                    },
-                },
-                },
-            },
-            });
-
-        if (!document) {
-            throw new NotFoundException(
-            'Document not found.',
-            );
-        }
-
-        return {
-            success: true,
-            data: document,
-        };
-    }
-
-    //GET actual file
-    async getDocumentFileForAdmin(
-    documentId: string,
-    ) {
-    const document =
-        await this.prisma.employeeDocument.findUnique({
-        where: {
-            id: documentId,
-        },
-
-        select: {
-            id: true,
-            bucket: true,
-            storagePath: true,
-            originalFileName: true,
-            mimeType: true,
-        },
-        });
+      select: {
+        id: true,
+        type: true,
+        title: true,
+        originalFileName: true,
+        mimeType: true,
+        fileSize: true,
+        status: true,
+        reviewedByUserId: true,
+        reviewedAt: true,
+        reviewNote: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
 
     if (!document) {
-        throw new NotFoundException(
-        'Document not found.',
-        );
+      throw new NotFoundException('Document not found.');
     }
-
-    const signedUrl =
-        await this.storageService.createSignedUrl(
-        document.storagePath,
-        600,
-        document.bucket,
-        );
 
     return {
-        success: true,
-        data: {
+      success: true,
+      data: document,
+    };
+  }
+
+  //get document file
+  async getMyDocumentFile(userId: string, documentId: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: {
+        userId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Employee profile not found.');
+    }
+
+    const document = await this.prisma.employeeDocument.findFirst({
+      where: {
+        id: documentId,
+        employeeId: employee.id,
+      },
+      select: {
+        id: true,
+        bucket: true,
+        storagePath: true,
+        originalFileName: true,
+        mimeType: true,
+      },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Document not found.');
+    }
+
+    const signedUrl = await this.storageService.createSignedUrl(
+      document.storagePath,
+      600,
+      document.bucket,
+    );
+
+    return {
+      success: true,
+      data: {
         url: signedUrl.url,
         expiresIn: signedUrl.expiresIn,
-        originalFileName:
-            document.originalFileName,
+        originalFileName: document.originalFileName,
         mimeType: document.mimeType,
-        },
+      },
     };
+  }
+
+  //Delete document
+  async deleteMyDocument(userId: string, documentId: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: {
+        userId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Employee profile not found.');
     }
 
-    //Verify document
-    async verifyDocument(
-        documentId: string,
-        adminUserId: string,
-        dto: ReviewDocumentDto,
-        ) {
-        const document =
-            await this.prisma.employeeDocument.findUnique({
-            where: {
-                id: documentId,
-            },
-            select: {
-                id: true,
-            },
-            });
+    const document = await this.prisma.employeeDocument.findFirst({
+      where: {
+        id: documentId,
+        employeeId: employee.id,
+      },
 
-        if (!document) {
-            throw new NotFoundException(
-            'Document not found.',
-            );
-        }
+      select: {
+        id: true,
+        status: true,
+        bucket: true,
+        storagePath: true,
+      },
+    });
 
-        const updatedDocument =
-            await this.prisma.employeeDocument.update({
-            where: {
-                id: documentId,
-            },
+    if (!document) {
+      throw new NotFoundException('Document not found.');
+    }
 
-            data: {
-                status: DocumentStatus.VERIFIED,
-                reviewedByUserId: adminUserId,
-                reviewedAt: new Date(),
-                reviewNote: dto.note?.trim() || null,
-            },
+    if (document.status === DocumentStatus.VERIFIED) {
+      throw new ForbiddenException(
+        'Verified documents cannot be deleted by employees.',
+      );
+    }
 
-            select: {
-                id: true,
-                type: true,
-                title: true,
-                originalFileName: true,
-                mimeType: true,
-                fileSize: true,
+    await this.storageService.deleteFile(document.storagePath, document.bucket);
+
+    await this.prisma.employeeDocument.delete({
+      where: {
+        id: document.id,
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Document deleted successfully.',
+      data: null,
+    };
+  }
+
+  //find all for admin
+  async findAllForAdmin(query: AdminDocumentListQueryDto) {
+    const documents = await this.prisma.employeeDocument.findMany({
+      where: {
+        ...(query.employeeId && {
+          employeeId: query.employeeId,
+        }),
+
+        ...(query.status && {
+          status: query.status,
+        }),
+
+        ...(query.type && {
+          type: query.type,
+        }),
+      },
+
+      orderBy: {
+        createdAt: 'desc',
+      },
+
+      select: {
+        id: true,
+        type: true,
+        title: true,
+        originalFileName: true,
+        mimeType: true,
+        fileSize: true,
+        status: true,
+        reviewedByUserId: true,
+        reviewedAt: true,
+        reviewNote: true,
+        createdAt: true,
+        updatedAt: true,
+
+        employee: {
+          select: {
+            id: true,
+            employeeCode: true,
+            firstName: true,
+            lastName: true,
+
+            user: {
+              select: {
+                email: true,
                 status: true,
-                reviewedByUserId: true,
-                reviewedAt: true,
-                reviewNote: true,
-                createdAt: true,
-                updatedAt: true,
-
-                employee: {
-                select: {
-                    id: true,
-                    employeeCode: true,
-                    firstName: true,
-                    lastName: true,
-                },
-                },
+              },
             },
-            });
 
-        return {
-            success: true,
-            message: 'Document verified successfully.',
-            data: updatedDocument,
-        };
-    }
-
-    //Reject document
-    async rejectDocument(
-        documentId: string,
-        adminUserId: string,
-        dto: RejectDocumentDto,
-        ) {
-        const document =
-            await this.prisma.employeeDocument.findUnique({
-            where: {
-                id: documentId,
-            },
-            select: {
+            department: {
+              select: {
                 id: true,
+                name: true,
+              },
             },
-            });
+          },
+        },
+      },
+    });
 
-        if (!document) {
-            throw new NotFoundException(
-            'Document not found.',
-            );
-        }
+    return {
+      success: true,
+      data: documents,
+    };
+  }
 
-        const updatedDocument =
-            await this.prisma.employeeDocument.update({
-            where: {
-                id: documentId,
-            },
+  //GET document file by id for admin
+  async findOneForAdmin(documentId: string) {
+    const document = await this.prisma.employeeDocument.findUnique({
+      where: {
+        id: documentId,
+      },
 
-            data: {
-                status: DocumentStatus.REJECTED,
-                reviewedByUserId: adminUserId,
-                reviewedAt: new Date(),
-                reviewNote: dto.note.trim(),
-            },
+      select: {
+        id: true,
+        type: true,
+        title: true,
+        originalFileName: true,
+        mimeType: true,
+        fileSize: true,
+        status: true,
+        reviewedByUserId: true,
+        reviewedAt: true,
+        reviewNote: true,
+        createdAt: true,
+        updatedAt: true,
 
-            select: {
-                id: true,
-                type: true,
-                title: true,
-                originalFileName: true,
-                mimeType: true,
-                fileSize: true,
+        employee: {
+          select: {
+            id: true,
+            employeeCode: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            jobTitle: true,
+
+            user: {
+              select: {
+                email: true,
                 status: true,
-                reviewedByUserId: true,
-                reviewedAt: true,
-                reviewNote: true,
-                createdAt: true,
-                updatedAt: true,
-
-                employee: {
-                select: {
-                    id: true,
-                    employeeCode: true,
-                    firstName: true,
-                    lastName: true,
-                },
-                },
+              },
             },
-            });
 
-        return {
-            success: true,
-            message: 'Document rejected successfully.',
-            data: updatedDocument,
-        };
+            department: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Document not found.');
     }
+
+    return {
+      success: true,
+      data: document,
+    };
+  }
+
+  //GET actual file
+  async getDocumentFileForAdmin(documentId: string) {
+    const document = await this.prisma.employeeDocument.findUnique({
+      where: {
+        id: documentId,
+      },
+
+      select: {
+        id: true,
+        bucket: true,
+        storagePath: true,
+        originalFileName: true,
+        mimeType: true,
+      },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Document not found.');
+    }
+
+    const signedUrl = await this.storageService.createSignedUrl(
+      document.storagePath,
+      600,
+      document.bucket,
+    );
+
+    return {
+      success: true,
+      data: {
+        url: signedUrl.url,
+        expiresIn: signedUrl.expiresIn,
+        originalFileName: document.originalFileName,
+        mimeType: document.mimeType,
+      },
+    };
+  }
+
+  //Verify document
+  async verifyDocument(
+    documentId: string,
+    adminUserId: string,
+    dto: ReviewDocumentDto,
+  ) {
+    const document = await this.prisma.employeeDocument.findUnique({
+      where: {
+        id: documentId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Document not found.');
+    }
+
+    const updatedDocument = await this.prisma.employeeDocument.update({
+      where: {
+        id: documentId,
+      },
+
+      data: {
+        status: DocumentStatus.VERIFIED,
+        reviewedByUserId: adminUserId,
+        reviewedAt: new Date(),
+        reviewNote: dto.note?.trim() || null,
+      },
+
+      select: {
+        id: true,
+        type: true,
+        title: true,
+        originalFileName: true,
+        mimeType: true,
+        fileSize: true,
+        status: true,
+        reviewedByUserId: true,
+        reviewedAt: true,
+        reviewNote: true,
+        createdAt: true,
+        updatedAt: true,
+
+        employee: {
+          select: {
+            id: true,
+            employeeCode: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Document verified successfully.',
+      data: updatedDocument,
+    };
+  }
+
+  //Reject document
+  async rejectDocument(
+    documentId: string,
+    adminUserId: string,
+    dto: RejectDocumentDto,
+  ) {
+    const document = await this.prisma.employeeDocument.findUnique({
+      where: {
+        id: documentId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Document not found.');
+    }
+
+    const updatedDocument = await this.prisma.employeeDocument.update({
+      where: {
+        id: documentId,
+      },
+
+      data: {
+        status: DocumentStatus.REJECTED,
+        reviewedByUserId: adminUserId,
+        reviewedAt: new Date(),
+        reviewNote: dto.note.trim(),
+      },
+
+      select: {
+        id: true,
+        type: true,
+        title: true,
+        originalFileName: true,
+        mimeType: true,
+        fileSize: true,
+        status: true,
+        reviewedByUserId: true,
+        reviewedAt: true,
+        reviewNote: true,
+        createdAt: true,
+        updatedAt: true,
+
+        employee: {
+          select: {
+            id: true,
+            employeeCode: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Document rejected successfully.',
+      data: updatedDocument,
+    };
+  }
 }

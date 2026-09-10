@@ -8,14 +8,8 @@ import { DocumentsService } from './documents.service';
 import { AdminDocumentsController } from './admin-documents.controller';
 
 @Module({
-  imports: [
-    AuthModule,
-    StorageModule,
-  ],
-  controllers: [
-    DocumentsController,
-    AdminDocumentsController,
-],
+  imports: [AuthModule, StorageModule],
+  controllers: [DocumentsController, AdminDocumentsController],
   providers: [DocumentsService],
 })
 export class DocumentsModule {}

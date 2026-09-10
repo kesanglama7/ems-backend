@@ -1,8 +1,4 @@
-import {
-  ApiPropertyOptional,
-  PartialType,
-  PickType,
-} from '@nestjs/swagger';
+import { ApiPropertyOptional, PartialType, PickType } from '@nestjs/swagger';
 import { EmployeeWorkMode } from '@prisma/client';
 import {
   IsDateString,
@@ -14,19 +10,14 @@ import {
 
 import { CreateEmployeeDto } from './create-employee.dto';
 
-class UpdateEmployeeFieldsDto extends PickType(
-  CreateEmployeeDto,
-  [
-    'firstName',
-    'lastName',
-    'phone',
-    'jobTitle',
-  ] as const,
-) {}
+class UpdateEmployeeFieldsDto extends PickType(CreateEmployeeDto, [
+  'firstName',
+  'lastName',
+  'phone',
+  'jobTitle',
+] as const) {}
 
-export class UpdateEmployeeDto extends PartialType(
-  UpdateEmployeeFieldsDto,
-) {
+export class UpdateEmployeeDto extends PartialType(UpdateEmployeeFieldsDto) {
   @ApiPropertyOptional({
     example: 'c74e74c7-17db-46ed-b854-a105c78dff78',
     nullable: true,
@@ -41,8 +32,7 @@ export class UpdateEmployeeDto extends PartialType(
   @ApiPropertyOptional({
     example: '2026-08-25',
     nullable: true,
-    description:
-      'Joining date. Send null to clear the joining date.',
+    description: 'Joining date. Send null to clear the joining date.',
   })
   @IsOptional()
   @ValidateIf((_, value) => value !== null)
@@ -52,7 +42,8 @@ export class UpdateEmployeeDto extends PartialType(
   @ApiPropertyOptional({
     enum: EmployeeWorkMode,
     example: EmployeeWorkMode.REMOTE,
-    description: 'Defines whether the employee normally works from the configured office location or remotely.',
+    description:
+      'Defines whether the employee normally works from the configured office location or remotely.',
   })
   @IsOptional()
   @IsEnum(EmployeeWorkMode)

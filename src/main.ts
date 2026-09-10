@@ -44,7 +44,8 @@ async function bootstrap() {
         type: 'http',
         scheme: 'bearer',
         bearerFormat: 'JWT',
-        description: 'Paste only the access token. Do not include the word Bearer.',
+        description:
+          'Paste only the access token. Do not include the word Bearer.',
       },
       'bearerAuth',
     )

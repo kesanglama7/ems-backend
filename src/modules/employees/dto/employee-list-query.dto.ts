@@ -11,7 +11,6 @@ import {
   Min,
 } from 'class-validator';
 
-
 export class EmployeeListQueryDto {
   @ApiPropertyOptional({
     example: 1,
@@ -37,8 +36,7 @@ export class EmployeeListQueryDto {
 
   @ApiPropertyOptional({
     example: 'john',
-    description:
-      'Search by first name, last name, email, or employee code.',
+    description: 'Search by first name, last name, email, or employee code.',
   })
   @IsOptional()
   @IsString()

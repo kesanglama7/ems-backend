@@ -1,6 +1,4 @@
-export function getProfileImageExtension(
-  mimeType: string,
-): string | null {
+export function getProfileImageExtension(mimeType: string): string | null {
   switch (mimeType) {
     case 'image/jpeg':
       return 'jpg';

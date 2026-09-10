@@ -81,7 +81,8 @@ export class CreateEmployeeDto {
   @ApiPropertyOptional({
     enum: EmployeeWorkMode,
     example: EmployeeWorkMode.ON_FIELD,
-    description: 'Defines whether the employee normally works from the configured office location or remotely.',
+    description:
+      'Defines whether the employee normally works from the configured office location or remotely.',
   })
   @IsOptional()
   @IsEnum(EmployeeWorkMode)

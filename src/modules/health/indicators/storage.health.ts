@@ -11,8 +11,7 @@ export class StorageHealthIndicator {
   ) {}
 
   async isHealthy(key: string) {
-    const indicator =
-      this.healthIndicatorService.check(key);
+    const indicator = this.healthIndicatorService.check(key);
 
     try {
       await this.storageService.checkBucket();
@@ -20,8 +19,7 @@ export class StorageHealthIndicator {
       return indicator.up();
     } catch {
       return indicator.down({
-        message:
-          'Supabase Storage is unavailable.',
+        message: 'Supabase Storage is unavailable.',
       });
     }
   }

@@ -71,14 +71,37 @@ enum LeaveSource {
   ADMIN
 }
 
-enum NotificationType {
-  LEAVE_REQUESTED
-  LEAVE_APPROVED
-  LEAVE_REJECTED
-  LEAVE_AUTO_REJECTED
-  LEAVE_CANCELLED
-  LEAVE_REMINDER
-  LEAVE_CREATED_BY_ADMIN
+enum PushPlatform {
+  WEB
+  IOS
+  ANDROID
+}
+
+enum EmployeeRequestCategory {
+  ATTENDANCE_CORRECTION
+  PROFILE_UPDATE
+  DOCUMENT
+  LEAVE
+  PAYROLL
+  TECHNICAL_SUPPORT
+  WORKPLACE_CONCERN
+  GENERAL_QUESTION
+  OTHER
+}
+
+enum EmployeeRequestStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
+  CANCELLED
+}
+
+enum EmployeeRequestPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
 }
 
 // model User {
@@ -104,7 +127,8 @@ model User {
 
   employee      Employee?
   authSessions  AuthSession[]
-  notifications Notification[]
+  pushDeviceTokens PushDeviceToken[]
+  
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -167,6 +191,7 @@ model Employee {
   attendance    Attendance[]
   leaveRequests LeaveRequest[]
   leaveBalances EmployeeLeaveBalance[]
+  employeeRequests EmployeeRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -274,6 +299,7 @@ model Attendance {
   overtimeMinutes   Int?
 
   audits AttendanceAudit[]
+  employeeRequests EmployeeRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -357,8 +383,6 @@ model LeaveRequest {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  notifications Notification[]
-
   @@index([employeeId, startDate, endDate])
   @@index([status, reviewDeadlineAt])
 }
@@ -399,19 +423,60 @@ model LeaveBalanceAdjustment {
   @@index([adminUserId])
 }
 
-model Notification {
-  id             String           @id @default(uuid())
-  userId         String
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type           NotificationType
-  title          String
-  message        String
-  leaveRequestId String?
-  leaveRequest   LeaveRequest?    @relation(fields: [leaveRequestId], references: [id], onDelete: Cascade)
-  isRead         Boolean          @default(false)
-  readAt         DateTime?
-  createdAt      DateTime         @default(now())
+model PushDeviceToken {
+  id       String       @id @default(uuid())
+  token    String       @unique
+  platform PushPlatform
+  userId   String
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId, isRead])
-  @@index([userId, createdAt])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model EmployeeRequest {
+  id String @id @default(uuid())
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  category EmployeeRequestCategory
+  subject  String
+  description String
+  status   EmployeeRequestStatus   @default(OPEN)
+  priority EmployeeRequestPriority @default(NORMAL)
+
+  attendanceId String?
+  attendance   Attendance? @relation(fields: [attendanceId], references: [id], onDelete: SetNull)
+
+  assignedAdminId   String?
+  resolvedByAdminId String?
+  resolutionNote    String?
+  resolvedAt        DateTime?
+
+  messages      EmployeeRequestMessage[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId, status])
+  @@index([category, status])
+  @@index([assignedAdminId, status])
+  @@index([createdAt])
+}
+
+model EmployeeRequestMessage {
+  id String @id @default(uuid())
+
+  requestId String
+  request   EmployeeRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  senderUserId String
+  message      String
+
+  createdAt DateTime @default(now())
+
+  @@index([requestId, createdAt])
+  @@index([senderUserId])
 }

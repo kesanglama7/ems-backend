@@ -10,33 +10,27 @@ import { UpdateDepartmentDto } from './dto/update-department.dto';
 
 @Injectable()
 export class DepartmentsService {
-  constructor(
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
   //create
   async create(dto: CreateDepartmentDto) {
     const name = dto.name.trim();
 
-    const existingDepartment =
-      await this.prisma.department.findUnique({
-        where: {
-          name,
-        },
-      });
+    const existingDepartment = await this.prisma.department.findUnique({
+      where: {
+        name,
+      },
+    });
 
     if (existingDepartment) {
-      throw new ConflictException(
-        'Department with this name already exists.',
-      );
+      throw new ConflictException('Department with this name already exists.');
     }
 
-    const department =
-      await this.prisma.department.create({
-        data: {
-          name,
-          description: dto.description?.trim() || null,
-        },
-      });
+    const department = await this.prisma.department.create({
+      data: {
+        name,
+        description: dto.description?.trim() || null,
+      },
+    });
 
     return {
       success: true,
@@ -47,12 +41,11 @@ export class DepartmentsService {
 
   //get all
   async findAll() {
-    const departments =
-      await this.prisma.department.findMany({
-        orderBy: {
-          name: 'asc',
-        },
-      });
+    const departments = await this.prisma.department.findMany({
+      orderBy: {
+        name: 'asc',
+      },
+    });
 
     return {
       success: true,
@@ -62,17 +55,14 @@ export class DepartmentsService {
 
   //get by id
   async findOne(id: string) {
-    const department =
-      await this.prisma.department.findUnique({
-        where: {
-          id,
-        },
-      });
+    const department = await this.prisma.department.findUnique({
+      where: {
+        id,
+      },
+    });
 
     if (!department) {
-      throw new NotFoundException(
-        'Department not found.',
-      );
+      throw new NotFoundException('Department not found.');
     }
 
     return {
@@ -82,35 +72,28 @@ export class DepartmentsService {
   }
 
   //Patch
-  async update(
-    id: string,
-    dto: UpdateDepartmentDto,
-  ) {
-    const department =
-      await this.prisma.department.findUnique({
-        where: {
-          id,
-        },
-      });
+  async update(id: string, dto: UpdateDepartmentDto) {
+    const department = await this.prisma.department.findUnique({
+      where: {
+        id,
+      },
+    });
 
     if (!department) {
-      throw new NotFoundException(
-        'Department not found.',
-      );
+      throw new NotFoundException('Department not found.');
     }
 
     if (dto.name !== undefined) {
       const name = dto.name.trim();
 
-      const duplicateDepartment =
-        await this.prisma.department.findFirst({
-          where: {
-            name,
-            id: {
-              not: id,
-            },
+      const duplicateDepartment = await this.prisma.department.findFirst({
+        where: {
+          name,
+          id: {
+            not: id,
           },
-        });
+        },
+      });
 
       if (duplicateDepartment) {
         throw new ConflictException(
@@ -119,26 +102,24 @@ export class DepartmentsService {
       }
     }
 
-    const updatedDepartment =
-      await this.prisma.department.update({
-        where: {
-          id,
-        },
-        data: {
-          ...(dto.name !== undefined && {
-            name: dto.name.trim(),
-          }),
+    const updatedDepartment = await this.prisma.department.update({
+      where: {
+        id,
+      },
+      data: {
+        ...(dto.name !== undefined && {
+          name: dto.name.trim(),
+        }),
 
-          ...(dto.description !== undefined && {
-            description:
-              dto.description.trim() || null,
-          }),
+        ...(dto.description !== undefined && {
+          description: dto.description.trim() || null,
+        }),
 
-          ...(dto.isActive !== undefined && {
-            isActive: dto.isActive,
-          }),
-        },
-      });
+        ...(dto.isActive !== undefined && {
+          isActive: dto.isActive,
+        }),
+      },
+    });
 
     return {
       success: true,
@@ -149,17 +130,14 @@ export class DepartmentsService {
 
   //Delete: id
   async deactivate(id: string) {
-    const department =
-      await this.prisma.department.findUnique({
-        where: {
-          id,
-        },
-      });
+    const department = await this.prisma.department.findUnique({
+      where: {
+        id,
+      },
+    });
 
     if (!department) {
-      throw new NotFoundException(
-        'Department not found.',
-      );
+      throw new NotFoundException('Department not found.');
     }
 
     if (!department.isActive) {
@@ -170,15 +148,14 @@ export class DepartmentsService {
       };
     }
 
-    const updatedDepartment =
-      await this.prisma.department.update({
-        where: {
-          id,
-        },
-        data: {
-          isActive: false,
-        },
-      });
+    const updatedDepartment = await this.prisma.department.update({
+      where: {
+        id,
+      },
+      data: {
+        isActive: false,
+      },
+    });
 
     return {
       success: true,

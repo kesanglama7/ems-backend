@@ -1,6 +1,4 @@
-export function getDocumentFileExtension(
-  mimeType: string,
-): string | null {
+export function getDocumentFileExtension(mimeType: string): string | null {
   switch (mimeType) {
     case 'application/pdf':
       return 'pdf';

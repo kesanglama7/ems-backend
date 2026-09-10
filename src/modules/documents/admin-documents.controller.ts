@@ -1,5 +1,5 @@
 import {
-    Body,
+  Body,
   Controller,
   Get,
   Param,
@@ -18,7 +18,6 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-
 
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -39,9 +38,7 @@ import { ApiAuth } from '../../common/decorators/api-auth.decorator';
 @Roles(Role.ADMIN)
 @ApiAuth()
 export class AdminDocumentsController {
-  constructor(
-    private readonly documentsService: DocumentsService,
-  ) {}
+  constructor(private readonly documentsService: DocumentsService) {}
 
   @Get()
   @ApiOperation({
@@ -89,19 +86,13 @@ export class AdminDocumentsController {
     description: 'Invalid query parameters.',
   })
   @ApiUnauthorizedResponse({
-    description:
-      'Authentication cookie is missing or invalid.',
+    description: 'Authentication cookie is missing or invalid.',
   })
   @ApiForbiddenResponse({
-    description:
-      'Authenticated user does not have ADMIN role.',
+    description: 'Authenticated user does not have ADMIN role.',
   })
-  findAll(
-    @Query() query: AdminDocumentListQueryDto,
-  ) {
-    return this.documentsService.findAllForAdmin(
-      query,
-    );
+  findAll(@Query() query: AdminDocumentListQueryDto) {
+    return this.documentsService.findAllForAdmin(query);
   }
 
   //GET: id
@@ -114,8 +105,7 @@ export class AdminDocumentsController {
   @ApiParam({
     name: 'documentId',
     description: 'Employee document UUID.',
-    example:
-      'c74e74c7-17db-46ed-b854-a105c78dff78',
+    example: 'c74e74c7-17db-46ed-b854-a105c78dff78',
   })
   @ApiOkResponse({
     description: 'Document retrieved successfully.',
@@ -154,22 +144,16 @@ export class AdminDocumentsController {
     },
   })
   @ApiUnauthorizedResponse({
-    description:
-      'Authentication cookie is missing or invalid.',
+    description: 'Authentication cookie is missing or invalid.',
   })
   @ApiForbiddenResponse({
-    description:
-      'Authenticated user does not have ADMIN role.',
+    description: 'Authenticated user does not have ADMIN role.',
   })
   @ApiNotFoundResponse({
     description: 'Document not found.',
   })
-  findOne(
-    @Param('documentId') documentId: string,
-  ) {
-    return this.documentsService.findOneForAdmin(
-      documentId,
-    );
+  findOne(@Param('documentId') documentId: string) {
+    return this.documentsService.findOneForAdmin(documentId);
   }
 
   //GET: file
@@ -182,12 +166,10 @@ export class AdminDocumentsController {
   @ApiParam({
     name: 'documentId',
     description: 'Employee document UUID.',
-    example:
-      'c74e74c7-17db-46ed-b854-a105c78dff78',
+    example: 'c74e74c7-17db-46ed-b854-a105c78dff78',
   })
   @ApiOkResponse({
-    description:
-      'Temporary document URL generated successfully.',
+    description: 'Temporary document URL generated successfully.',
     schema: {
       example: {
         success: true,
@@ -201,21 +183,16 @@ export class AdminDocumentsController {
     },
   })
   @ApiUnauthorizedResponse({
-    description:
-      'Authentication cookie is missing or invalid.',
+    description: 'Authentication cookie is missing or invalid.',
   })
   @ApiForbiddenResponse({
-    description:
-      'Authenticated user does not have ADMIN role.',
+    description: 'Authenticated user does not have ADMIN role.',
   })
   @ApiNotFoundResponse({
     description: 'Document not found.',
   })
-  getDocumentFile(
-    @Param('documentId') documentId: string,
-  ) {
-    return this.documentsService
-      .getDocumentFileForAdmin(documentId);
+  getDocumentFile(@Param('documentId') documentId: string) {
+    return this.documentsService.getDocumentFileForAdmin(documentId);
   }
 
   //Verify document
@@ -228,8 +205,7 @@ export class AdminDocumentsController {
   @ApiParam({
     name: 'documentId',
     description: 'Employee document UUID.',
-    example:
-      'c74e74c7-17db-46ed-b854-a105c78dff78',
+    example: 'c74e74c7-17db-46ed-b854-a105c78dff78',
   })
   @ApiOkResponse({
     description: 'Document verified successfully.',
@@ -243,10 +219,8 @@ export class AdminDocumentsController {
           title: 'My Passport',
           status: 'VERIFIED',
           reviewedByUserId: 'admin-user-uuid',
-          reviewedAt:
-            '2026-08-26T01:30:00.000Z',
-          reviewNote:
-            'Document verified successfully.',
+          reviewedAt: '2026-08-26T01:30:00.000Z',
+          reviewNote: 'Document verified successfully.',
           employee: {
             id: 'employee-uuid',
             employeeCode: 'EMP-0001',
@@ -258,12 +232,10 @@ export class AdminDocumentsController {
     },
   })
   @ApiUnauthorizedResponse({
-    description:
-      'Authentication cookie is missing or invalid.',
+    description: 'Authentication cookie is missing or invalid.',
   })
   @ApiForbiddenResponse({
-    description:
-      'Authenticated user does not have ADMIN role.',
+    description: 'Authenticated user does not have ADMIN role.',
   })
   @ApiNotFoundResponse({
     description: 'Document not found.',
@@ -273,11 +245,7 @@ export class AdminDocumentsController {
     @Param('documentId') documentId: string,
     @Body() dto: ReviewDocumentDto,
   ) {
-    return this.documentsService.verifyDocument(
-      documentId,
-      admin.id,
-      dto,
-    );
+    return this.documentsService.verifyDocument(documentId, admin.id, dto);
   }
 
   //reject document
@@ -290,8 +258,7 @@ export class AdminDocumentsController {
   @ApiParam({
     name: 'documentId',
     description: 'Employee document UUID.',
-    example:
-      'c74e74c7-17db-46ed-b854-a105c78dff78',
+    example: 'c74e74c7-17db-46ed-b854-a105c78dff78',
   })
   @ApiOkResponse({
     description: 'Document rejected successfully.',
@@ -305,10 +272,8 @@ export class AdminDocumentsController {
           title: 'Citizenship ID',
           status: 'REJECTED',
           reviewedByUserId: 'admin-user-uuid',
-          reviewedAt:
-            '2026-08-26T02:00:00.000Z',
-          reviewNote:
-            'The uploaded ID image is not clear.',
+          reviewedAt: '2026-08-26T02:00:00.000Z',
+          reviewNote: 'The uploaded ID image is not clear.',
           employee: {
             id: 'employee-uuid',
             employeeCode: 'EMP-0001',
@@ -320,16 +285,13 @@ export class AdminDocumentsController {
     },
   })
   @ApiBadRequestResponse({
-    description:
-      'Validation failed or rejection note is missing.',
+    description: 'Validation failed or rejection note is missing.',
   })
   @ApiUnauthorizedResponse({
-    description:
-      'Authentication cookie is missing or invalid.',
+    description: 'Authentication cookie is missing or invalid.',
   })
   @ApiForbiddenResponse({
-    description:
-      'Authenticated user does not have ADMIN role.',
+    description: 'Authenticated user does not have ADMIN role.',
   })
   @ApiNotFoundResponse({
     description: 'Document not found.',
@@ -339,10 +301,6 @@ export class AdminDocumentsController {
     @Param('documentId') documentId: string,
     @Body() dto: RejectDocumentDto,
   ) {
-    return this.documentsService.rejectDocument(
-      documentId,
-      admin.id,
-      dto,
-    );
+    return this.documentsService.rejectDocument(documentId, admin.id, dto);
   }
 }

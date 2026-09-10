@@ -10,9 +10,10 @@ import { LeaveTypesService } from './leave-types.service';
 import { LeaveCalculationService } from './leave-calculation.service';
 import { LeaveBalanceService } from './leave-balance.service';
 import { LeaveSchedulerService } from './leave-scheduler.service';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, StorageModule],
 
   controllers: [LeaveTypesController, LeavesController, AdminLeavesController],
 

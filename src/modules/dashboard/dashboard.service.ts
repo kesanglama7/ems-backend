@@ -1,13 +1,6 @@
-import {
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 
-import {
-  DocumentStatus,
-  LeaveStatus,
-  UserStatus,
-} from '@prisma/client';
+import { DocumentStatus, LeaveStatus, UserStatus } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -15,34 +8,25 @@ import { getNormalizedWorkDate } from '../attendance/utils/attendance-date.util'
 
 @Injectable()
 export class DashboardService {
-  constructor(
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async getDashboard() {
-    const officeSetting =
-      await this.prisma.officeSetting.findFirst({
-        orderBy: {
-          createdAt: 'asc',
-        },
-        select: {
-          timezone: true,
-        },
-      });
+    const officeSetting = await this.prisma.officeSetting.findFirst({
+      orderBy: {
+        createdAt: 'asc',
+      },
+      select: {
+        timezone: true,
+      },
+    });
 
     if (!officeSetting) {
-      throw new NotFoundException(
-        'Office settings not found.',
-      );
+      throw new NotFoundException('Office settings not found.');
     }
 
     const now = new Date();
 
-    const workDate =
-      getNormalizedWorkDate(
-        now,
-        officeSetting.timezone,
-      );
+    const workDate = getNormalizedWorkDate(now, officeSetting.timezone);
 
     const [
       totalEmployees,

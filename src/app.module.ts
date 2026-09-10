@@ -13,7 +13,8 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
 import { LeavesModule } from './modules/leaves/leaves.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ScheduleModule } from '@nestjs/schedule';
-import { NotificationsModule } from './modules/notifications/notifications.module';
+import { FirebaseModule } from './modules/firebase/firebase.module';
+import { EmployeeRequestsModule } from './modules/employee-requests/employee-requests.module';
 
 @Module({
   imports: [
@@ -32,7 +33,8 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     AttendanceModule,
     LeavesModule,
     DashboardModule,
-    NotificationsModule,
+    FirebaseModule,
+    EmployeeRequestsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

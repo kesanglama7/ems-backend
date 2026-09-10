@@ -6,16 +6,10 @@ import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
 
 @Module({
-  imports: [
-    AuthModule,
-  ],
+  imports: [AuthModule],
 
-  controllers: [
-    DashboardController,
-  ],
+  controllers: [DashboardController],
 
-  providers: [
-    DashboardService,
-  ],
+  providers: [DashboardService],
 })
 export class DashboardModule {}

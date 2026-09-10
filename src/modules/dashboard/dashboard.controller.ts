@@ -1,8 +1,4 @@
-import {
-  Controller,
-  Get,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, UseGuards } from '@nestjs/common';
 
 import {
   ApiCookieAuth,
@@ -28,19 +24,15 @@ import { ApiAuth } from '../../common/decorators/api-auth.decorator';
 @Roles(Role.ADMIN)
 @ApiAuth()
 export class DashboardController {
-  constructor(
-    private readonly dashboardService: DashboardService,
-  ) {}
+  constructor(private readonly dashboardService: DashboardService) {}
 
   @Get()
   @ApiOperation({
     summary: 'Get admin dashboard',
-    description:
-      'Returns summary metrics for the ADMIN dashboard.',
+    description: 'Returns summary metrics for the ADMIN dashboard.',
   })
   @ApiOkResponse({
-    description:
-      'Dashboard metrics retrieved successfully.',
+    description: 'Dashboard metrics retrieved successfully.',
     schema: {
       example: {
         success: true,
@@ -66,19 +58,15 @@ export class DashboardController {
     },
   })
   @ApiUnauthorizedResponse({
-    description:
-      'Authentication cookie is missing or invalid.',
+    description: 'Authentication cookie is missing or invalid.',
   })
   @ApiForbiddenResponse({
-    description:
-      'Authenticated user does not have ADMIN role.',
+    description: 'Authenticated user does not have ADMIN role.',
   })
   @ApiNotFoundResponse({
-    description:
-      'Office Settings were not found.',
+    description: 'Office Settings were not found.',
   })
   getDashboard() {
-    return this.dashboardService
-      .getDashboard();
+    return this.dashboardService.getDashboard();
   }
 }

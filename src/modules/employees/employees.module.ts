@@ -7,10 +7,7 @@ import { EmployeesService } from './employees.service';
 import { StorageModule } from '../storage/storage.module';
 
 @Module({
-  imports: [
-    AuthModule,
-    StorageModule,
-  ],
+  imports: [AuthModule, StorageModule],
   controllers: [EmployeesController],
   providers: [EmployeesService],
 })

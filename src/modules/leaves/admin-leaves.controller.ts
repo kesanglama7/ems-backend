@@ -25,6 +25,7 @@ import { LeaveBalanceQueryDto } from './dto/leave-balance-query.dto';
 import { ReviewLeaveDto } from './dto/review-leave.dto';
 import { LeaveBalanceService } from './leave-balance.service';
 import { LeavesService } from './leaves.service';
+import { AdminLeaveBalanceQueryDto } from './dto/admin-leave-balance-query.dto';
 
 @ApiTags('Admin Leaves')
 @ApiAuth()
@@ -46,11 +47,15 @@ export class AdminLeavesController {
   initialize(@Body() dto: InitializeBalancesDto) {
     return this.balances.initialize(dto.year);
   }
+
   @Get('balances')
-  @ApiOperation({ summary: 'Get all employee leave balances' })
-  allBalances(@Query() query: LeaveBalanceQueryDto) {
-    return this.balances.getAllForAdmin(query.year);
+  @ApiOperation({
+    summary: 'Get paginated employee leave balances',
+  })
+  allBalances(@Query() query: AdminLeaveBalanceQueryDto) {
+    return this.balances.getAllForAdmin(query);
   }
+
   @Get('employees/:employeeId/balance')
   @ApiOperation({ summary: 'Get employee leave balance' })
   employeeBalance(
@@ -59,6 +64,7 @@ export class AdminLeavesController {
   ) {
     return this.balances.getForAdmin(id, query.year);
   }
+
   @Patch('employees/:employeeId/balance/:leaveTypeId')
   @ApiOperation({ summary: 'Adjust employee leave balance' })
   adjust(

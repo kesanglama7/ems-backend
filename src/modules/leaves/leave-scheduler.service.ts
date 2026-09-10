@@ -1,15 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { LeaveStatus, NotificationType, Prisma } from '@prisma/client';
+import { LeaveStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { NotificationsService } from '../notifications/notifications.service';
+import { FirebaseService } from '../firebase/firebase.service';
+import { PushNotificationType as NotificationType } from '../firebase/firebase-notification.types';
 
 @Injectable()
 export class LeaveSchedulerService {
   private readonly logger = new Logger(LeaveSchedulerService.name);
   constructor(
     private readonly prisma: PrismaService,
-    private readonly notifications: NotificationsService,
+    private readonly notifications: FirebaseService,
   ) {}
 
   @Cron(CronExpression.EVERY_10_MINUTES)

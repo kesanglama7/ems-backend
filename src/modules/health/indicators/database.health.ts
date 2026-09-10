@@ -2,8 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { HealthIndicatorService } from '@nestjs/terminus';
 import { PrismaService } from '../../prisma/prisma.service';
 
-
-
 @Injectable()
 export class DatabaseHealthIndicator {
   constructor(
@@ -12,8 +10,7 @@ export class DatabaseHealthIndicator {
   ) {}
 
   async isHealthy(key: string) {
-    const indicator =
-      this.healthIndicatorService.check(key);
+    const indicator = this.healthIndicatorService.check(key);
 
     try {
       await this.prisma.$queryRaw`SELECT 1`;
