@@ -104,6 +104,14 @@ enum EmployeeRequestPriority {
   URGENT
 }
 
+enum EmployeeRequestActivityAction {
+  CREATED
+  STATUS_CHANGED
+  ASSIGNED
+  ADMIN_NOTE_UPDATED
+  CANCELLED
+}
+
 // model User {
 //   id           String     @id @default(uuid())
 //   email        String     @unique
@@ -125,10 +133,12 @@ model User {
   role         Role       @default(EMPLOYEE)
   status       UserStatus @default(ACTIVE)
 
-  employee      Employee?
-  authSessions  AuthSession[]
-  pushDeviceTokens PushDeviceToken[]
-  
+  employee                  Employee?
+  authSessions              AuthSession[]
+  pushDeviceTokens          PushDeviceToken[]
+  assignedEmployeeRequests  EmployeeRequest[]         @relation("EmployeeRequestAssignee")
+  resolvedEmployeeRequests  EmployeeRequest[]         @relation("EmployeeRequestResolver")
+  employeeRequestActivities EmployeeRequestActivity[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -187,10 +197,10 @@ model Employee {
   departmentId String?
   department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
 
-  documents     EmployeeDocument[]
-  attendance    Attendance[]
-  leaveRequests LeaveRequest[]
-  leaveBalances EmployeeLeaveBalance[]
+  documents        EmployeeDocument[]
+  attendance       Attendance[]
+  leaveRequests    LeaveRequest[]
+  leaveBalances    EmployeeLeaveBalance[]
   employeeRequests EmployeeRequest[]
 
   createdAt DateTime @default(now())
@@ -298,7 +308,7 @@ model Attendance {
   totalMinutes      Int?
   overtimeMinutes   Int?
 
-  audits AttendanceAudit[]
+  audits           AttendanceAudit[]
   employeeRequests EmployeeRequest[]
 
   createdAt DateTime @default(now())
@@ -439,44 +449,56 @@ model PushDeviceToken {
 model EmployeeRequest {
   id String @id @default(uuid())
 
+  requestNumber Int @unique @default(autoincrement())
+
   employeeId String
   employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
-  category EmployeeRequestCategory
-  subject  String
+  category    EmployeeRequestCategory
+  subject     String
   description String
-  status   EmployeeRequestStatus   @default(OPEN)
-  priority EmployeeRequestPriority @default(NORMAL)
+  status      EmployeeRequestStatus   @default(OPEN)
+  priority    EmployeeRequestPriority @default(NORMAL)
 
   attendanceId String?
   attendance   Attendance? @relation(fields: [attendanceId], references: [id], onDelete: SetNull)
 
-  assignedAdminId   String?
-  resolvedByAdminId String?
-  resolutionNote    String?
-  resolvedAt        DateTime?
+  assignedAdminId String?
+  assignedAdmin   User?   @relation("EmployeeRequestAssignee", fields: [assignedAdminId], references: [id], onDelete: SetNull)
 
-  messages      EmployeeRequestMessage[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  resolvedByAdminId String?
+  resolvedByAdmin   User?   @relation("EmployeeRequestResolver", fields: [resolvedByAdminId], references: [id], onDelete: SetNull)
+
+  adminNote      String?
+  resolutionNote String?
+  resolvedAt     DateTime?
+
+  activities EmployeeRequestActivity[]
+  createdAt  DateTime                  @default(now())
+  updatedAt  DateTime                  @updatedAt
 
   @@index([employeeId, status])
   @@index([category, status])
   @@index([assignedAdminId, status])
+  @@index([status, createdAt])
   @@index([createdAt])
 }
 
-model EmployeeRequestMessage {
+model EmployeeRequestActivity {
   id String @id @default(uuid())
 
   requestId String
   request   EmployeeRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
-  senderUserId String
-  message      String
+  performedByUserId String?
+  performedBy       User?   @relation(fields: [performedByUserId], references: [id], onDelete: SetNull)
+
+  action     EmployeeRequestActivityAction
+  fromStatus EmployeeRequestStatus?
+  toStatus   EmployeeRequestStatus?
 
   createdAt DateTime @default(now())
 
   @@index([requestId, createdAt])
-  @@index([senderUserId])
+  @@index([performedByUserId])
 }

@@ -7,7 +7,6 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/role.guard';
 import type { RequestUser } from '../../common/interfaces/request-user.interface';
-import { AddRequestMessageDto } from './dto/add-request-message.dto';
 import { CreateEmployeeRequestDto } from './dto/create-employee-request.dto';
 import { RequestQueryDto } from './dto/request-query.dto';
 import { EmployeeRequestsService } from './employee-requests.service';
@@ -33,15 +32,9 @@ export class EmployeeRequestsController {
   }
 
   @Get(':requestId')
-  @ApiOperation({ summary: 'Get my request with messages' })
+  @ApiOperation({ summary: 'Get my request with activity history' })
   findOne(@CurrentUser() user: RequestUser, @Param('requestId', ParseUUIDPipe) id: string) {
     return this.service.findOne(user.id, Role.EMPLOYEE, id);
-  }
-
-  @Post(':requestId/messages')
-  @ApiOperation({ summary: 'Reply to my request' })
-  addMessage(@CurrentUser() user: RequestUser, @Param('requestId', ParseUUIDPipe) id: string, @Body() dto: AddRequestMessageDto) {
-    return this.service.addMessage(user.id, Role.EMPLOYEE, id, dto);
   }
 
   @Patch(':requestId/cancel')
@@ -50,4 +43,3 @@ export class EmployeeRequestsController {
     return this.service.cancel(user.id, id);
   }
 }
-

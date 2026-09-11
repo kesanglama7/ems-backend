@@ -7,6 +7,7 @@ import {
 import { Transform } from 'class-transformer';
 import {
   IsEnum,
+  IsISO8601,
   IsInt,
   IsOptional,
   IsString,
@@ -14,6 +15,18 @@ import {
   Max,
   Min,
 } from 'class-validator';
+
+export enum EmployeeRequestSortBy {
+  CREATED_AT = 'createdAt',
+  UPDATED_AT = 'updatedAt',
+  PRIORITY = 'priority',
+  RESOLVED_AT = 'resolvedAt',
+}
+
+export enum SortOrder {
+  ASC = 'asc',
+  DESC = 'desc',
+}
 
 export class RequestQueryDto {
   @ApiPropertyOptional({
@@ -72,6 +85,29 @@ export class RequestQueryDto {
   @IsOptional()
   @IsUUID()
   assignedAdminId?: string;
+
+  @ApiPropertyOptional({ type: String, format: 'date-time' })
+  @IsOptional()
+  @IsISO8601()
+  createdFrom?: string;
+
+  @ApiPropertyOptional({ type: String, format: 'date-time' })
+  @IsOptional()
+  @IsISO8601()
+  createdTo?: string;
+
+  @ApiPropertyOptional({
+    enum: EmployeeRequestSortBy,
+    default: EmployeeRequestSortBy.CREATED_AT,
+  })
+  @IsOptional()
+  @IsEnum(EmployeeRequestSortBy)
+  sortBy: EmployeeRequestSortBy = EmployeeRequestSortBy.CREATED_AT;
+
+  @ApiPropertyOptional({ enum: SortOrder, default: SortOrder.DESC })
+  @IsOptional()
+  @IsEnum(SortOrder)
+  sortOrder: SortOrder = SortOrder.DESC;
 
   @ApiPropertyOptional({
     type: Number,
