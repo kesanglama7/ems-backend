@@ -2,7 +2,10 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -17,6 +20,7 @@ import { FirebaseService } from '../firebase/firebase.service';
 import { PushNotificationType as NotificationType } from '../firebase/firebase-notification.types';
 import { StorageService } from '../storage/storage.service';
 import { CreateEmployeeRequestDto } from './dto/create-employee-request.dto';
+import { DismissRequestDto } from './dto/dismiss-request.dto';
 import { RequestQueryDto } from './dto/request-query.dto';
 import { UpdateAdminNoteDto } from './dto/update-admin-note.dto';
 import { UpdateRequestStatusDto } from './dto/update-request-status.dto';
@@ -43,11 +47,17 @@ const requestInclude = {
   },
   assignedAdmin: { select: { id: true, email: true } },
   resolvedByAdmin: { select: { id: true, email: true } },
+  dismissedByAdmin: { select: { id: true, email: true } },
 } satisfies Prisma.EmployeeRequestInclude;
+
+const MAX_ACTIVE_REQUESTS_PER_EMPLOYEE = 5;
+const REQUEST_CREATION_COOLDOWN_MS = 60_000;
+const DUPLICATE_REQUEST_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const CLOSED_REQUEST_STATUSES: readonly EmployeeRequestStatus[] = [
   EmployeeRequestStatus.RESOLVED,
   EmployeeRequestStatus.REJECTED,
+  EmployeeRequestStatus.DISMISSED,
   EmployeeRequestStatus.CANCELLED,
 ];
 
@@ -58,6 +68,8 @@ const RESOLUTION_REQUIRED_STATUSES: readonly EmployeeRequestStatus[] = [
 
 @Injectable()
 export class EmployeeRequestsService {
+  private readonly logger = new Logger(EmployeeRequestsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: FirebaseService,
@@ -66,6 +78,68 @@ export class EmployeeRequestsService {
 
   async create(userId: string, dto: CreateEmployeeRequestDto) {
     const employee = await this.getEmployee(userId);
+    const subject = dto.subject.trim();
+    const description = dto.description.trim();
+
+    const [activeRequestCount, latestRequest, duplicateRequest] =
+      await Promise.all([
+        this.prisma.employeeRequest.count({
+          where: {
+            employeeId: employee.id,
+            status: {
+              in: [
+                EmployeeRequestStatus.OPEN,
+                EmployeeRequestStatus.IN_PROGRESS,
+              ],
+            },
+          },
+        }),
+        this.prisma.employeeRequest.findFirst({
+          where: { employeeId: employee.id },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true },
+        }),
+        this.prisma.employeeRequest.findFirst({
+          where: {
+            employeeId: employee.id,
+            subject: { equals: subject, mode: 'insensitive' },
+            description: { equals: description, mode: 'insensitive' },
+            createdAt: {
+              gte: new Date(Date.now() - DUPLICATE_REQUEST_WINDOW_MS),
+            },
+          },
+          select: { id: true },
+        }),
+      ]);
+
+    if (activeRequestCount >= MAX_ACTIVE_REQUESTS_PER_EMPLOYEE) {
+      throw new ConflictException(
+        `You already have ${MAX_ACTIVE_REQUESTS_PER_EMPLOYEE} active requests. Please wait until an existing request is completed.`,
+      );
+    }
+
+    if (latestRequest) {
+      const elapsedMs = Date.now() - latestRequest.createdAt.getTime();
+      if (elapsedMs < REQUEST_CREATION_COOLDOWN_MS) {
+        const retryAfterSeconds = Math.ceil(
+          (REQUEST_CREATION_COOLDOWN_MS - elapsedMs) / 1000,
+        );
+        throw new HttpException(
+          {
+            statusCode: HttpStatus.TOO_MANY_REQUESTS,
+            message: `Please wait ${retryAfterSeconds} seconds before submitting another request.`,
+            retryAfterSeconds,
+          },
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+    }
+
+    if (duplicateRequest) {
+      throw new ConflictException(
+        'An identical request was submitted within the last 24 hours.',
+      );
+    }
 
     if (
       dto.category === EmployeeRequestCategory.ATTENDANCE_CORRECTION &&
@@ -114,8 +188,8 @@ export class EmployeeRequestsService {
         data: {
           employeeId: employee.id,
           category: dto.category,
-          subject: dto.subject.trim(),
-          description: dto.description.trim(),
+          subject,
+          description,
           priority: dto.priority,
           attendanceId: dto.attendanceId,
         },
@@ -131,14 +205,19 @@ export class EmployeeRequestsService {
         },
       });
 
-      await this.notifications.createForActiveAdmins(tx, {
-        type: NotificationType.EMPLOYEE_REQUEST_CREATED,
-        title: 'New employee request',
-        message: `${employee.firstName} ${employee.lastName}: ${created.subject}`,
-        employeeRequestId: created.id,
-      });
       return created;
     });
+
+    await this.notifySafely(
+      () =>
+        this.notifications.sendToActiveAdmins({
+          type: NotificationType.EMPLOYEE_REQUEST_CREATED,
+          title: 'New employee request',
+          message: `${employee.firstName} ${employee.lastName}: ${request.subject}`,
+          employeeRequestId: request.id,
+        }),
+      `new employee request ${request.id}`,
+    );
 
     return {
       success: true,
@@ -239,6 +318,65 @@ export class EmployeeRequestsService {
     };
   }
 
+  async dismiss(
+    requestId: string,
+    adminUserId: string,
+    dto: DismissRequestDto,
+  ) {
+    const existing = await this.prisma.employeeRequest.findUnique({
+      where: { id: requestId },
+      include: { employee: { select: { userId: true } } },
+    });
+    if (!existing) throw new NotFoundException('Employee request not found.');
+    if (CLOSED_REQUEST_STATUSES.includes(existing.status)) {
+      throw new ConflictException('This request is already closed.');
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const request = await tx.employeeRequest.update({
+        where: { id: requestId },
+        data: {
+          status: EmployeeRequestStatus.DISMISSED,
+          assignedAdminId: existing.assignedAdminId ?? adminUserId,
+          dismissedByAdminId: adminUserId,
+          dismissalReason: dto.reason,
+          dismissalNote: dto.note?.trim() || null,
+          dismissedAt: new Date(),
+        },
+        include: requestInclude,
+      });
+
+      await tx.employeeRequestActivity.create({
+        data: {
+          requestId,
+          performedByUserId: adminUserId,
+          action: EmployeeRequestActivityAction.DISMISSED,
+          fromStatus: existing.status,
+          toStatus: EmployeeRequestStatus.DISMISSED,
+        },
+      });
+
+      return request;
+    });
+
+    await this.notifySafely(
+      () =>
+        this.notifications.sendToUser(existing.employee.userId, {
+          type: NotificationType.EMPLOYEE_REQUEST_STATUS_CHANGED,
+          title: 'Request dismissed',
+          message: existing.subject,
+          employeeRequestId: existing.id,
+        }),
+      `dismissed employee request ${requestId}`,
+    );
+
+    return {
+      success: true,
+      message: 'Request dismissed successfully.',
+      data: await this.withProfileImageUrl(updated),
+    };
+  }
+
   async cancel(userId: string, requestId: string) {
     const employee = await this.getEmployee(userId);
     const existing = await this.prisma.employeeRequest.findFirst({
@@ -307,6 +445,16 @@ export class EmployeeRequestsService {
       });
       return data;
     });
+    await this.notifySafely(
+      () =>
+        this.notifications.sendToUser(adminUserId, {
+          type: NotificationType.EMPLOYEE_REQUEST_ASSIGNED,
+          title: 'Employee request assigned',
+          message: updated.subject,
+          employeeRequestId: updated.id,
+        }),
+      `assigned employee request ${requestId}`,
+    );
     return {
       success: true,
       message: 'Request assigned successfully.',
@@ -320,11 +468,11 @@ export class EmployeeRequestsService {
     dto: UpdateRequestStatusDto,
   ) {
     if (
-      dto.status === EmployeeRequestStatus.OPEN ||
-      dto.status === EmployeeRequestStatus.CANCELLED
+      dto.status === EmployeeRequestStatus.CANCELLED ||
+      dto.status === EmployeeRequestStatus.DISMISSED
     ) {
       throw new BadRequestException(
-        'Admin can only set IN_PROGRESS, RESOLVED, or REJECTED status.',
+        'Use the dedicated cancel or dismiss action for this status.',
       );
     }
     if (
@@ -344,6 +492,9 @@ export class EmployeeRequestsService {
     if (CLOSED_REQUEST_STATUSES.includes(existing.status)) {
       throw new ConflictException('This request is already closed.');
     }
+    if (existing.status === dto.status) {
+      throw new ConflictException('The request already has this status.');
+    }
 
     const isFinalStatus = RESOLUTION_REQUIRED_STATUSES.includes(dto.status);
 
@@ -352,8 +503,13 @@ export class EmployeeRequestsService {
         where: { id: requestId },
         data: {
           status: dto.status,
-          assignedAdminId: existing.assignedAdminId ?? adminUserId,
-          resolutionNote: dto.resolutionNote?.trim(),
+          assignedAdminId:
+            dto.status === EmployeeRequestStatus.OPEN
+              ? null
+              : existing.assignedAdminId ?? adminUserId,
+          resolutionNote: isFinalStatus
+            ? dto.resolutionNote!.trim()
+            : null,
           resolvedByAdminId: isFinalStatus ? adminUserId : null,
           resolvedAt: isFinalStatus ? new Date() : null,
         },
@@ -368,15 +524,19 @@ export class EmployeeRequestsService {
           toStatus: dto.status,
         },
       });
-      await this.notifications.createForUser(tx, {
-        userId: existing.employee.userId,
-        type: NotificationType.EMPLOYEE_REQUEST_STATUS_CHANGED,
-        title: `Request ${dto.status.toLowerCase().replace('_', ' ')}`,
-        message: existing.subject,
-        employeeRequestId: existing.id,
-      });
       return data;
     });
+
+    await this.notifySafely(
+      () =>
+        this.notifications.sendToUser(existing.employee.userId, {
+          type: NotificationType.EMPLOYEE_REQUEST_STATUS_CHANGED,
+          title: `Request ${dto.status.toLowerCase().replace('_', ' ')}`,
+          message: existing.subject,
+          employeeRequestId: existing.id,
+        }),
+      `status change for employee request ${requestId}`,
+    );
     return {
       success: true,
       message: 'Request status updated successfully.',
@@ -487,6 +647,8 @@ export class EmployeeRequestsService {
       assignedAdminId: _assignedAdminId,
       resolvedByAdmin: _resolvedByAdmin,
       resolvedByAdminId: _resolvedByAdminId,
+      dismissedByAdmin: _dismissedByAdmin,
+      dismissedByAdminId: _dismissedByAdminId,
       ...safeRequest
     } = request;
     if ('activities' in safeRequest && Array.isArray(safeRequest.activities)) {
@@ -531,5 +693,19 @@ export class EmployeeRequestsService {
     });
     if (!employee) throw new NotFoundException('Employee profile not found.');
     return employee;
+  }
+
+  private async notifySafely(
+    send: () => Promise<unknown>,
+    context: string,
+  ) {
+    try {
+      await send();
+    } catch (error) {
+      this.logger.error(
+        `Notification delivery failed for ${context}.`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
   }
 }

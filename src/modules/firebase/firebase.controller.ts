@@ -30,6 +30,12 @@ export class FirebaseController {
     return this.firebase.listMyDevices(user.id);
   }
 
+  @Get('status')
+  @ApiOperation({ summary: 'Check Firebase readiness and registered devices' })
+  status(@CurrentUser() user: RequestUser) {
+    return this.firebase.getDeliveryStatus(user.id);
+  }
+
   @Delete('devices')
   @ApiOperation({ summary: 'Unregister my FCM device token' })
   unregister(

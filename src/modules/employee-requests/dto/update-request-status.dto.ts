@@ -3,7 +3,14 @@ import { EmployeeRequestStatus } from '@prisma/client';
 import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateRequestStatusDto {
-  @ApiProperty({ enum: [EmployeeRequestStatus.IN_PROGRESS, EmployeeRequestStatus.RESOLVED, EmployeeRequestStatus.REJECTED] })
+  @ApiProperty({
+    enum: [
+      EmployeeRequestStatus.OPEN,
+      EmployeeRequestStatus.IN_PROGRESS,
+      EmployeeRequestStatus.RESOLVED,
+      EmployeeRequestStatus.REJECTED,
+    ],
+  })
   @IsEnum(EmployeeRequestStatus)
   status: EmployeeRequestStatus;
 
@@ -13,4 +20,3 @@ export class UpdateRequestStatusDto {
   @MaxLength(1000)
   resolutionNote?: string;
 }
-

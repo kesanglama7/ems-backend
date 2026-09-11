@@ -8,6 +8,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/role.guard';
 import type { RequestUser } from '../../common/interfaces/request-user.interface';
 import { AssignRequestDto } from './dto/assign-request.dto';
+import { DismissRequestDto } from './dto/dismiss-request.dto';
 import { RequestQueryDto } from './dto/request-query.dto';
 import { UpdateAdminNoteDto } from './dto/update-admin-note.dto';
 import { UpdateRequestStatusDto } from './dto/update-request-status.dto';
@@ -57,6 +58,16 @@ export class AdminEmployeeRequestsController {
     @Body() dto: UpdateAdminNoteDto,
   ) {
     return this.service.updateAdminNote(id, user.id, dto);
+  }
+
+  @Patch(':requestId/dismiss')
+  @ApiOperation({ summary: 'Dismiss a spam, duplicate, or invalid request' })
+  dismiss(
+    @CurrentUser() user: RequestUser,
+    @Param('requestId', ParseUUIDPipe) id: string,
+    @Body() dto: DismissRequestDto,
+  ) {
+    return this.service.dismiss(id, user.id, dto);
   }
 
   @Patch(':requestId/status')

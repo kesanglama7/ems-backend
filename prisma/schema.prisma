@@ -94,6 +94,7 @@ enum EmployeeRequestStatus {
   IN_PROGRESS
   RESOLVED
   REJECTED
+  DISMISSED
   CANCELLED
 }
 
@@ -109,7 +110,16 @@ enum EmployeeRequestActivityAction {
   STATUS_CHANGED
   ASSIGNED
   ADMIN_NOTE_UPDATED
+  DISMISSED
   CANCELLED
+}
+
+enum EmployeeRequestDismissalReason {
+  SPAM_OR_INAPPROPRIATE
+  DUPLICATE
+  INVALID_REQUEST
+  INSUFFICIENT_INFORMATION
+  OTHER
 }
 
 // model User {
@@ -138,6 +148,7 @@ model User {
   pushDeviceTokens          PushDeviceToken[]
   assignedEmployeeRequests  EmployeeRequest[]         @relation("EmployeeRequestAssignee")
   resolvedEmployeeRequests  EmployeeRequest[]         @relation("EmployeeRequestResolver")
+  dismissedEmployeeRequests EmployeeRequest[]         @relation("EmployeeRequestDismisser")
   employeeRequestActivities EmployeeRequestActivity[]
 
   createdAt DateTime @default(now())
@@ -469,9 +480,15 @@ model EmployeeRequest {
   resolvedByAdminId String?
   resolvedByAdmin   User?   @relation("EmployeeRequestResolver", fields: [resolvedByAdminId], references: [id], onDelete: SetNull)
 
-  adminNote      String?
-  resolutionNote String?
-  resolvedAt     DateTime?
+  dismissedByAdminId String?
+  dismissedByAdmin   User?   @relation("EmployeeRequestDismisser", fields: [dismissedByAdminId], references: [id], onDelete: SetNull)
+
+  adminNote       String?
+  resolutionNote  String?
+  resolvedAt      DateTime?
+  dismissalReason EmployeeRequestDismissalReason?
+  dismissalNote   String?
+  dismissedAt     DateTime?
 
   activities EmployeeRequestActivity[]
   createdAt  DateTime                  @default(now())

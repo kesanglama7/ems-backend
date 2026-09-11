@@ -47,6 +47,7 @@ export class FirebaseService implements OnModuleInit {
         }),
       });
     this.messaging = getMessaging(app);
+    this.logger.log('Firebase Cloud Messaging is enabled.');
   }
 
   async registerDevice(userId: string, dto: RegisterDeviceTokenDto) {
@@ -102,6 +103,24 @@ export class FirebaseService implements OnModuleInit {
     );
   }
 
+  async getDeliveryStatus(userId: string) {
+    const [currentUserDeviceCount, activeAdminDeviceCount] = await Promise.all([
+      this.prisma.pushDeviceToken.count({ where: { userId } }),
+      this.prisma.pushDeviceToken.count({
+        where: { user: { role: 'ADMIN', status: 'ACTIVE' } },
+      }),
+    ]);
+
+    return {
+      success: true,
+      data: {
+        firebaseEnabled: Boolean(this.messaging),
+        currentUserDeviceCount,
+        activeAdminDeviceCount,
+      },
+    };
+  }
+
   // These two adapters keep domain transactions readable while delivery has
   // moved from Prisma records to Firebase Cloud Messaging.
   createForUser(
@@ -117,7 +136,12 @@ export class FirebaseService implements OnModuleInit {
   }
 
   private async sendToTokens(tokens: string[], notification: PushNotification) {
-    if (!tokens.length) return { successCount: 0, failureCount: 0 };
+    if (!tokens.length) {
+      this.logger.warn(
+        `Skipped ${notification.type}: no registered recipient devices.`,
+      );
+      return { successCount: 0, failureCount: 0 };
+    }
     if (!this.messaging) {
       this.logger.warn(`Skipped ${notification.type}: Firebase is disabled.`);
       return { successCount: 0, failureCount: tokens.length };
@@ -141,6 +165,11 @@ export class FirebaseService implements OnModuleInit {
         successCount += result.successCount;
         failureCount += result.failureCount;
         result.responses.forEach((response, responseIndex) => {
+          if (!response.success) {
+            this.logger.warn(
+              `Firebase delivery failed for ${notification.type}: ${response.error?.code ?? 'unknown-error'} - ${response.error?.message ?? 'No error message'}`,
+            );
+          }
           if (
             !response.success &&
             response.error?.code &&
@@ -163,6 +192,11 @@ export class FirebaseService implements OnModuleInit {
         where: { token: { in: invalidTokens } },
       });
     }
+
+
+    this.logger.log(
+      `Firebase ${notification.type}: ${successCount} delivered, ${failureCount} failed, ${invalidTokens.length} invalid tokens removed.`,
+    );
 
     return { successCount, failureCount };
   }
