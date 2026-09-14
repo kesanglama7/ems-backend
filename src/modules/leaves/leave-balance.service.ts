@@ -1,3 +1,5 @@
+import { NotificationType } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   BadRequestException,
   Injectable,
@@ -13,6 +15,7 @@ export class LeaveBalanceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storageService: StorageService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async ensure(
@@ -394,7 +397,7 @@ export class LeaveBalanceService {
           where: { id: balance.id },
           data: { totalDays },
         });
-        await tx.leaveBalanceAdjustment.create({
+        const adjustment = await tx.leaveBalanceAdjustment.create({
           data: {
             employeeLeaveBalanceId: balance.id,
             adjustmentDays: days,
@@ -402,6 +405,18 @@ export class LeaveBalanceService {
             adminUserId,
           },
         });
+        const employee = await tx.employee.findUniqueOrThrow({
+          where: { id: employeeId },
+          select: { userId: true },
+        });
+        if (days !== 0)
+          await this.notifications.createForUser(tx, {
+            userId: employee.userId,
+            actorUserId: adminUserId,
+            type: NotificationType.LEAVE_BALANCE_ADJUSTED,
+            eventId: adjustment.id,
+            leaveBalanceId: updated.id,
+          });
         return {
           success: true,
           message: 'Leave balance adjusted.',

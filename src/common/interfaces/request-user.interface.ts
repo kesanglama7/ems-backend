@@ -6,4 +6,5 @@ export interface RequestUser {
   role: Role;
 
   employeeId?: string;
+  sessionId: string;
 }

@@ -1,3 +1,4 @@
+import { rethrowConcurrentMutation } from '../notifications/concurrent-mutation';
 import {
   BadRequestException,
   Injectable,
@@ -10,8 +11,8 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { FirebaseService } from '../firebase/firebase.service';
-import { PushNotificationType as NotificationType } from '../firebase/firebase-notification.types';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType, NotificationEntityType } from '@prisma/client';
 import { AdminLeaveQueryDto } from './dto/admin-leave-query.dto';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { AdminCreateLeaveDto } from './dto/admin-create-leave.dto';
@@ -46,7 +47,7 @@ export class LeavesService {
     private readonly prisma: PrismaService,
     private readonly calculation: LeaveCalculationService,
     private readonly balances: LeaveBalanceService,
-    private readonly notifications: FirebaseService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async preview(userId: string, dto: CreateLeaveRequestDto) {
@@ -121,47 +122,48 @@ export class LeavesService {
       calculated.startDate,
       calculated.workingDays,
     );
-    const leave = await this.prisma.$transaction(
-      async (tx) => {
-        if (type.hasLimitedBalance) {
-          const balance = await this.balances.ensure(
-            tx,
-            employee.id,
-            type.id,
-            calculated.year,
-            type.yearlyAllowance,
-          );
-          this.balances.assertAvailable(balance, calculated.requestedDays);
-          await tx.employeeLeaveBalance.update({
-            where: { id: balance.id },
-            data: { pendingDays: { increment: calculated.requestedDays } },
+    const leave = await this.prisma
+      .$transaction(
+        async (tx) => {
+          if (type.hasLimitedBalance) {
+            const balance = await this.balances.ensure(
+              tx,
+              employee.id,
+              type.id,
+              calculated.year,
+              type.yearlyAllowance,
+            );
+            this.balances.assertAvailable(balance, calculated.requestedDays);
+            await tx.employeeLeaveBalance.update({
+              where: { id: balance.id },
+              data: { pendingDays: { increment: calculated.requestedDays } },
+            });
+          }
+          const created = await tx.leaveRequest.create({
+            data: {
+              employeeId: employee.id,
+              leaveTypeId: type.id,
+              startDate: calculated.startDate,
+              endDate: calculated.endDate,
+              duration: dto.duration,
+              requestedDays: calculated.requestedDays,
+              reason: dto.reason?.trim(),
+              source: LeaveSource.EMPLOYEE,
+              createdByUserId: userId,
+              reviewDeadlineAt: deadline,
+            },
+            select: detailSelect,
           });
-        }
-        const created = await tx.leaveRequest.create({
-          data: {
-            employeeId: employee.id,
-            leaveTypeId: type.id,
-            startDate: calculated.startDate,
-            endDate: calculated.endDate,
-            duration: dto.duration,
-            requestedDays: calculated.requestedDays,
-            reason: dto.reason?.trim(),
-            source: LeaveSource.EMPLOYEE,
-            createdByUserId: userId,
-            reviewDeadlineAt: deadline,
-          },
-          select: detailSelect,
-        });
-        await this.notifications.createForActiveAdmins(tx, {
-          type: NotificationType.LEAVE_REQUESTED,
-          title: 'New leave request',
-          message: `${employee.firstName} ${employee.lastName} requested ${calculated.requestedDays} day(s) of ${type.name}.`,
-          leaveRequestId: created.id,
-        });
-        return created;
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
+          await this.notifications.createForActiveAdmins(tx, {
+            actorUserId: userId,
+            type: NotificationType.LEAVE_REQUESTED,
+            leaveRequestId: created.id,
+          });
+          return created;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      )
+      .catch(rethrowConcurrentMutation);
     return {
       success: true,
       message: 'Leave request submitted successfully.',
@@ -202,12 +204,6 @@ export class LeavesService {
       undefined,
       employee.id,
     );
-    await this.notifications.createForActiveAdmins(this.prisma, {
-      type: NotificationType.LEAVE_CANCELLED,
-      title: 'Leave request cancelled',
-      message: `${employee.firstName} ${employee.lastName} cancelled a leave request.`,
-      leaveRequestId: leaveId,
-    });
     return {
       success: true,
       message: 'Leave request cancelled successfully.',
@@ -292,31 +288,38 @@ export class LeavesService {
       throw new BadRequestException(
         'Only pending leave requests can be approved.',
       );
-    const data = await this.prisma.$transaction(
-      async (tx) => {
-        if (request.leaveType.hasLimitedBalance)
-          await this.movePending(tx, request, true);
-        const updated = await tx.leaveRequest.update({
-          where: { id: leaveId },
-          data: {
-            status: LeaveStatus.APPROVED,
-            reviewedByUserId: adminUserId,
-            reviewedAt: new Date(),
-            reviewNote: dto.note?.trim() ?? null,
-          },
-          select: detailSelect,
-        });
-        await this.notifications.createForUser(tx, {
-          userId: request.employee.userId,
-          type: NotificationType.LEAVE_APPROVED,
-          title: 'Leave approved',
-          message: `Your ${request.leaveType.name} request was approved.`,
-          leaveRequestId: leaveId,
-        });
-        return updated;
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
+    const data = await this.prisma
+      .$transaction(
+        async (tx) => {
+          if (request.leaveType.hasLimitedBalance)
+            await this.movePending(tx, request, true);
+          const updated = await tx.leaveRequest.update({
+            where: { id: leaveId, status: 'PENDING' },
+            data: {
+              status: LeaveStatus.APPROVED,
+              reviewedByUserId: adminUserId,
+              reviewedAt: new Date(),
+              reviewNote: dto.note?.trim() ?? null,
+            },
+            select: detailSelect,
+          });
+          await this.notifications.suppressEntityDeliveries(
+            tx,
+            NotificationEntityType.LEAVE_REQUEST,
+            leaveId,
+            NotificationType.LEAVE_REMINDER,
+          );
+          await this.notifications.createForUser(tx, {
+            userId: request.employee.userId,
+            actorUserId: adminUserId,
+            type: NotificationType.LEAVE_APPROVED,
+            leaveRequestId: leaveId,
+          });
+          return updated;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      )
+      .catch(rethrowConcurrentMutation);
     return {
       success: true,
       message: 'Leave request approved successfully.',
@@ -337,21 +340,6 @@ export class LeavesService {
       adminUserId,
       dto.note.trim(),
     );
-    const request = await this.prisma.leaveRequest.findUnique({
-      where: { id: leaveId },
-      include: {
-        employee: { select: { userId: true } },
-        leaveType: { select: { name: true } },
-      },
-    });
-    if (request)
-      await this.notifications.createForUser(this.prisma, {
-        userId: request.employee.userId,
-        type: NotificationType.LEAVE_REJECTED,
-        title: 'Leave rejected',
-        message: `Your ${request.leaveType.name} request was rejected.`,
-        leaveRequestId: leaveId,
-      });
     return {
       success: true,
       message: 'Leave request rejected successfully.',
@@ -380,51 +368,52 @@ export class LeavesService {
     );
     if (type.isSystem)
       await this.assertEmergencyEligible(employee.id, calculated.year);
-    const data = await this.prisma.$transaction(
-      async (tx) => {
-        if (type.hasLimitedBalance) {
-          const balance = await this.balances.ensure(
-            tx,
-            employee.id,
-            type.id,
-            calculated.year,
-            type.yearlyAllowance,
-          );
-          this.balances.assertAvailable(balance, calculated.requestedDays);
-          await tx.employeeLeaveBalance.update({
-            where: { id: balance.id },
-            data: { usedDays: { increment: calculated.requestedDays } },
+    const data = await this.prisma
+      .$transaction(
+        async (tx) => {
+          if (type.hasLimitedBalance) {
+            const balance = await this.balances.ensure(
+              tx,
+              employee.id,
+              type.id,
+              calculated.year,
+              type.yearlyAllowance,
+            );
+            this.balances.assertAvailable(balance, calculated.requestedDays);
+            await tx.employeeLeaveBalance.update({
+              where: { id: balance.id },
+              data: { usedDays: { increment: calculated.requestedDays } },
+            });
+          }
+          const created = await tx.leaveRequest.create({
+            data: {
+              employeeId: employee.id,
+              leaveTypeId: type.id,
+              startDate: calculated.startDate,
+              endDate: calculated.endDate,
+              duration: dto.duration,
+              requestedDays: calculated.requestedDays,
+              reason: dto.reason.trim(),
+              status: LeaveStatus.APPROVED,
+              source: LeaveSource.ADMIN,
+              createdByUserId: adminUserId,
+              reviewedByUserId: adminUserId,
+              reviewedAt: new Date(),
+              reviewNote: 'Created and approved by administrator.',
+            },
+            select: detailSelect,
           });
-        }
-        const created = await tx.leaveRequest.create({
-          data: {
-            employeeId: employee.id,
-            leaveTypeId: type.id,
-            startDate: calculated.startDate,
-            endDate: calculated.endDate,
-            duration: dto.duration,
-            requestedDays: calculated.requestedDays,
-            reason: dto.reason.trim(),
-            status: LeaveStatus.APPROVED,
-            source: LeaveSource.ADMIN,
-            createdByUserId: adminUserId,
-            reviewedByUserId: adminUserId,
-            reviewedAt: new Date(),
-            reviewNote: 'Created and approved by administrator.',
-          },
-          select: detailSelect,
-        });
-        await this.notifications.createForUser(tx, {
-          userId: employee.userId,
-          type: NotificationType.LEAVE_CREATED_BY_ADMIN,
-          title: 'Leave created by admin',
-          message: `An administrator created ${calculated.requestedDays} day(s) of ${type.name} for you.`,
-          leaveRequestId: created.id,
-        });
-        return created;
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
+          await this.notifications.createForUser(tx, {
+            userId: employee.userId,
+            actorUserId: adminUserId,
+            type: NotificationType.LEAVE_CREATED_BY_ADMIN,
+            leaveRequestId: created.id,
+          });
+          return created;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      )
+      .catch(rethrowConcurrentMutation);
     return {
       success: true,
       message: 'Employee leave created and approved.',
@@ -500,51 +489,52 @@ export class LeavesService {
       throw new BadRequestException(
         'Only approved leave can be cancelled by an administrator.',
       );
-    const data = await this.prisma.$transaction(
-      async (tx) => {
-        if (request.leaveType.hasLimitedBalance) {
-          const balance = await tx.employeeLeaveBalance.findUnique({
-            where: {
-              employeeId_leaveTypeId_year: {
-                employeeId: request.employeeId,
-                leaveTypeId: request.leaveTypeId,
-                year: request.startDate.getUTCFullYear(),
+    const data = await this.prisma
+      .$transaction(
+        async (tx) => {
+          if (request.leaveType.hasLimitedBalance) {
+            const balance = await tx.employeeLeaveBalance.findUnique({
+              where: {
+                employeeId_leaveTypeId_year: {
+                  employeeId: request.employeeId,
+                  leaveTypeId: request.leaveTypeId,
+                  year: request.startDate.getUTCFullYear(),
+                },
               },
+            });
+            if (
+              !balance ||
+              Number(balance.usedDays) < Number(request.requestedDays)
+            )
+              throw new BadRequestException(
+                'Used leave balance is missing or invalid.',
+              );
+            await tx.employeeLeaveBalance.update({
+              where: { id: balance.id },
+              data: { usedDays: { decrement: request.requestedDays } },
+            });
+          }
+          const updated = await tx.leaveRequest.update({
+            where: { id: leaveId, status: 'APPROVED' },
+            data: {
+              status: LeaveStatus.CANCELLED,
+              reviewedByUserId: adminUserId,
+              reviewedAt: new Date(),
+              reviewNote: note,
             },
+            select: detailSelect,
           });
-          if (
-            !balance ||
-            Number(balance.usedDays) < Number(request.requestedDays)
-          )
-            throw new BadRequestException(
-              'Used leave balance is missing or invalid.',
-            );
-          await tx.employeeLeaveBalance.update({
-            where: { id: balance.id },
-            data: { usedDays: { decrement: request.requestedDays } },
+          await this.notifications.createForUser(tx, {
+            userId: request.employee.userId,
+            actorUserId: adminUserId,
+            type: NotificationType.LEAVE_CANCELLED,
+            leaveRequestId: leaveId,
           });
-        }
-        const updated = await tx.leaveRequest.update({
-          where: { id: leaveId },
-          data: {
-            status: LeaveStatus.CANCELLED,
-            reviewedByUserId: adminUserId,
-            reviewedAt: new Date(),
-            reviewNote: note,
-          },
-          select: detailSelect,
-        });
-        await this.notifications.createForUser(tx, {
-          userId: request.employee.userId,
-          type: NotificationType.LEAVE_CANCELLED,
-          title: 'Approved leave cancelled',
-          message: `Your approved ${request.leaveType.name} was cancelled by an administrator.`,
-          leaveRequestId: leaveId,
-        });
-        return updated;
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
+          return updated;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      )
+      .catch(rethrowConcurrentMutation);
     return {
       success: true,
       message: 'Approved leave cancelled and balance restored.',
@@ -653,32 +643,56 @@ export class LeavesService {
   ) {
     const request = await this.prisma.leaveRequest.findFirst({
       where: { id: leaveId, ...(employeeId && { employeeId }) },
-      include: { leaveType: true },
+      include: { leaveType: true, employee: { select: { userId: true } } },
     });
     if (!request) throw new NotFoundException('Leave request not found.');
     if (request.status !== LeaveStatus.PENDING)
       throw new BadRequestException(
         'Only pending leave requests can be changed.',
       );
-    return this.prisma.$transaction(
-      async (tx) => {
-        if (request.leaveType.hasLimitedBalance)
-          await this.movePending(tx, request, false);
-        return tx.leaveRequest.update({
-          where: { id: leaveId },
-          data: {
-            status,
-            ...(adminUserId && {
-              reviewedByUserId: adminUserId,
-              reviewedAt: new Date(),
-            }),
-            ...(note && { reviewNote: note }),
-          },
-          select: detailSelect,
-        });
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
+    return this.prisma
+      .$transaction(
+        async (tx) => {
+          if (request.leaveType.hasLimitedBalance)
+            await this.movePending(tx, request, false);
+          const updated = await tx.leaveRequest.update({
+            where: { id: leaveId, status: 'PENDING' },
+            data: {
+              status,
+              ...(adminUserId && {
+                reviewedByUserId: adminUserId,
+                reviewedAt: new Date(),
+              }),
+              ...(note && { reviewNote: note }),
+            },
+            select: detailSelect,
+          });
+          await this.notifications.suppressEntityDeliveries(
+            tx,
+            NotificationEntityType.LEAVE_REQUEST,
+            leaveId,
+            NotificationType.LEAVE_REMINDER,
+          );
+          const event = {
+            type:
+              status === LeaveStatus.REJECTED
+                ? NotificationType.LEAVE_REJECTED
+                : NotificationType.LEAVE_CANCELLED,
+            actorUserId: adminUserId ?? request.employee.userId,
+            leaveRequestId: leaveId,
+            eventId: `leave:${leaveId}:${updated.updatedAt.toISOString()}:${status}`,
+          };
+          if (status === LeaveStatus.REJECTED)
+            await this.notifications.createForUser(tx, {
+              ...event,
+              userId: request.employee.userId,
+            });
+          else await this.notifications.createForActiveAdmins(tx, event);
+          return updated;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      )
+      .catch(rethrowConcurrentMutation);
   }
 
   private async assertEmergencyEligible(employeeId: string, year: number) {

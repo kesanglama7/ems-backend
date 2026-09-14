@@ -1,28 +1,36 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { LeaveStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { FirebaseService } from '../firebase/firebase.service';
-import { PushNotificationType as NotificationType } from '../firebase/firebase-notification.types';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '@prisma/client';
 
 @Injectable()
-export class LeaveSchedulerService {
+export class LeaveSchedulerService implements OnApplicationBootstrap {
   private readonly logger = new Logger(LeaveSchedulerService.name);
   constructor(
     private readonly prisma: PrismaService,
-    private readonly notifications: FirebaseService,
+    private readonly notifications: NotificationsService,
   ) {}
 
-  @Cron(CronExpression.EVERY_10_MINUTES)
+  onApplicationBootstrap() {
+    void this.processPendingLeaves().catch((error: unknown) => {
+      this.logger.error(
+        'Leave scheduler startup catch-up failed.',
+        error instanceof Error ? error.stack : String(error),
+      );
+    });
+  }
+
+  @Cron(CronExpression.EVERY_10_MINUTES, { waitForCompletion: true })
   async processPendingLeaves() {
     const now = new Date();
-    const reminderFrom = new Date(now.getTime() + 23 * 60 * 60 * 1000);
     const reminderTo = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     const reminders = await this.prisma.leaveRequest.findMany({
       where: {
         status: LeaveStatus.PENDING,
         reminderSentAt: null,
-        reviewDeadlineAt: { gte: reminderFrom, lte: reminderTo },
+        reviewDeadlineAt: { gt: now, lte: reminderTo },
       },
       include: {
         employee: { select: { userId: true } },
@@ -37,14 +45,14 @@ export class LeaveSchedulerService {
               id: request.id,
               status: LeaveStatus.PENDING,
               reminderSentAt: null,
+              reviewDeadlineAt: { gt: now, lte: reminderTo },
             },
             data: { reminderSentAt: now },
           });
           if (!claimed.count) return;
           const payload = {
             type: NotificationType.LEAVE_REMINDER,
-            title: 'Leave awaiting review',
-            message: `${request.leaveType.name} is still awaiting review.`,
+            eventId: `leave:${request.id}:reminder`,
             leaveRequestId: request.id,
           };
           await this.notifications.createForUser(tx, {
@@ -99,8 +107,7 @@ export class LeaveSchedulerService {
             }
             const payload = {
               type: NotificationType.LEAVE_AUTO_REJECTED,
-              title: 'Leave automatically rejected',
-              message: `${request.leaveType.name} was not reviewed before its deadline.`,
+              eventId: `leave:${request.id}:auto-rejected`,
               leaveRequestId: request.id,
             };
             await this.notifications.createForUser(tx, {

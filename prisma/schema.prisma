@@ -122,20 +122,6 @@ enum EmployeeRequestDismissalReason {
   OTHER
 }
 
-// model User {
-//   id           String     @id @default(uuid())
-//   email        String     @unique
-//   passwordHash String
-//   role         Role       @default(EMPLOYEE)
-//   status       UserStatus @default(ACTIVE)
-
-//   employee Employee?
-
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
-// }
-
-//new user and AuthSession model to support multiple auth tokens system
 model User {
   id           String     @id @default(uuid())
   email        String     @unique
@@ -146,6 +132,8 @@ model User {
   employee                  Employee?
   authSessions              AuthSession[]
   pushDeviceTokens          PushDeviceToken[]
+  notifications             Notification[]            @relation("NotificationRecipient")
+  notificationActions       Notification[]            @relation("NotificationActor")
   assignedEmployeeRequests  EmployeeRequest[]         @relation("EmployeeRequestAssignee")
   resolvedEmployeeRequests  EmployeeRequest[]         @relation("EmployeeRequestResolver")
   dismissedEmployeeRequests EmployeeRequest[]         @relation("EmployeeRequestDismisser")
@@ -160,6 +148,8 @@ model AuthSession {
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  pushDeviceTokens PushDeviceToken[]
 
   refreshTokenHash String
 
@@ -445,16 +435,116 @@ model LeaveBalanceAdjustment {
 }
 
 model PushDeviceToken {
-  id       String       @id @default(uuid())
-  token    String       @unique
-  platform PushPlatform
-  userId   String
-  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId  String?
+  session    AuthSession?           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  lastSeenAt DateTime               @default(now())
+  deliveries NotificationDelivery[]
+  id         String                 @id @default(uuid())
+  token      String                 @unique
+  platform   PushPlatform
+  userId     String
+  user       User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+  @@index([sessionId])
+  @@index([lastSeenAt])
+}
+
+enum NotificationCategory {
+  LEAVE
+  REQUEST
+  DOCUMENT
+  ATTENDANCE
+}
+
+enum NotificationType {
+  LEAVE_REQUESTED
+  LEAVE_APPROVED
+  LEAVE_REJECTED
+  LEAVE_AUTO_REJECTED
+  LEAVE_CANCELLED
+  LEAVE_REMINDER
+  LEAVE_CREATED_BY_ADMIN
+  LEAVE_BALANCE_ADJUSTED
+  EMPLOYEE_REQUEST_CREATED
+  EMPLOYEE_REQUEST_STATUS_CHANGED
+  EMPLOYEE_REQUEST_ASSIGNED
+  EMPLOYEE_REQUEST_CANCELLED
+  EMPLOYEE_REQUEST_DISMISSED
+  DOCUMENT_UPLOADED
+  DOCUMENT_VERIFIED
+  DOCUMENT_REJECTED
+  DOCUMENT_DELETED
+  ATTENDANCE_CREATED_BY_ADMIN
+  ATTENDANCE_UPDATED_BY_ADMIN
+}
+
+enum NotificationEntityType {
+  LEAVE_REQUEST
+  EMPLOYEE_REQUEST
+  DOCUMENT
+  ATTENDANCE
+  LEAVE_BALANCE
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  PROCESSING
+  RETRY
+  ACCEPTED
+  FAILED
+  SKIPPED
+}
+
+model Notification {
+  id              String                 @id @default(uuid())
+  recipientUserId String
+  recipient       User                   @relation("NotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
+  actorUserId     String?
+  actor           User?                  @relation("NotificationActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  eventId         String
+  type            NotificationType
+  category        NotificationCategory
+  title           String                 @db.VarChar(160)
+  message         String                 @db.VarChar(500)
+  entityType      NotificationEntityType
+  entityId        String
+  readAt          DateTime?
+  createdAt       DateTime               @default(now())
+  expiresAt       DateTime
+  deliveries      NotificationDelivery[]
+
+  @@unique([eventId, recipientUserId])
+  @@index([recipientUserId, createdAt, id])
+  @@index([recipientUserId, readAt, expiresAt])
+  @@index([expiresAt])
+  @@index([entityType, entityId])
+}
+
+model NotificationDelivery {
+  id              String                     @id @default(uuid())
+  notificationId  String
+  notification    Notification               @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  deviceTokenId   String?
+  deviceToken     PushDeviceToken?           @relation(fields: [deviceTokenId], references: [id], onDelete: SetNull)
+  targetSessionId String?
+  status          NotificationDeliveryStatus @default(PENDING)
+  attempts        Int                        @default(0)
+  nextAttemptAt   DateTime                   @default(now())
+  lockedUntil     DateTime?
+  claimToken      String?
+  acceptedAt      DateTime?
+  lastErrorCode   String?
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+
+  @@unique([notificationId, deviceTokenId])
+  @@index([status, nextAttemptAt])
+  @@index([status, lockedUntil])
+  @@index([deviceTokenId])
 }
 
 model EmployeeRequest {

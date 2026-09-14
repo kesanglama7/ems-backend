@@ -1,3 +1,6 @@
+import { rethrowConcurrentMutation } from '../notifications/concurrent-mutation';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType, NotificationEntityType } from '@prisma/client';
 import {
   BadRequestException,
   ForbiddenException,
@@ -26,6 +29,7 @@ export class DocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storageService: StorageService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   //Upload document
@@ -81,25 +85,36 @@ export class DocumentsService {
     });
 
     try {
-      const document = await this.prisma.employeeDocument.create({
-        data: {
-          employeeId: employee.id,
+      const document = await this.prisma
+        .$transaction(async (tx) => {
+          const created = await tx.employeeDocument.create({
+            data: {
+              employeeId: employee.id,
 
-          type: dto.type,
-          title: dto.title.trim(),
+              type: dto.type,
+              title: dto.title.trim(),
 
-          originalFileName: file.originalname,
+              originalFileName: file.originalname,
 
-          mimeType: file.mimetype,
-          fileSize: file.size,
+              mimeType: file.mimetype,
+              fileSize: file.size,
 
-          bucket: uploadedFile.bucket,
-          storagePath: uploadedFile.storagePath,
+              bucket: uploadedFile.bucket,
+              storagePath: uploadedFile.storagePath,
 
-          // status omitted intentionally
-          // Prisma default = PENDING
-        },
-      });
+              // status omitted intentionally
+              // Prisma default = PENDING
+            },
+          });
+          await this.notifications.createForActiveAdmins(tx, {
+            type: NotificationType.DOCUMENT_UPLOADED,
+            actorUserId: userId,
+            eventId: `document:${created.id}:uploaded`,
+            documentId: created.id,
+          });
+          return created;
+        })
+        .catch(rethrowConcurrentMutation);
 
       return {
         success: true,
@@ -304,11 +319,25 @@ export class DocumentsService {
 
     await this.storageService.deleteFile(document.storagePath, document.bucket);
 
-    await this.prisma.employeeDocument.delete({
-      where: {
-        id: document.id,
-      },
-    });
+    await this.prisma
+      .$transaction(async (tx) => {
+        await tx.employeeDocument.delete({
+          where: { id: document.id, status: document.status },
+        });
+        await this.notifications.suppressEntityDeliveries(
+          tx,
+          NotificationEntityType.DOCUMENT,
+          document.id,
+        );
+        if (document.status === DocumentStatus.PENDING)
+          await this.notifications.createForActiveAdmins(tx, {
+            type: NotificationType.DOCUMENT_DELETED,
+            actorUserId: userId,
+            eventId: `document:${document.id}:deleted`,
+            documentId: document.id,
+          });
+      })
+      .catch(rethrowConcurrentMutation);
 
     return {
       success: true,
@@ -490,6 +519,9 @@ export class DocumentsService {
       },
       select: {
         id: true,
+        status: true,
+        updatedAt: true,
+        employee: { select: { userId: true } },
       },
     });
 
@@ -497,42 +529,64 @@ export class DocumentsService {
       throw new NotFoundException('Document not found.');
     }
 
-    const updatedDocument = await this.prisma.employeeDocument.update({
-      where: {
-        id: documentId,
-      },
+    const updatedDocument = await this.prisma
+      .$transaction(async (tx) => {
+        const updated = await tx.employeeDocument.update({
+          where: {
+            id: documentId,
+            status: document.status,
+            updatedAt: document.updatedAt,
+          },
 
-      data: {
-        status: DocumentStatus.VERIFIED,
-        reviewedByUserId: adminUserId,
-        reviewedAt: new Date(),
-        reviewNote: dto.note?.trim() || null,
-      },
+          data: {
+            status: DocumentStatus.VERIFIED,
+            reviewedByUserId: adminUserId,
+            reviewedAt: new Date(),
+            reviewNote: dto.note?.trim() || null,
+          },
 
-      select: {
-        id: true,
-        type: true,
-        title: true,
-        originalFileName: true,
-        mimeType: true,
-        fileSize: true,
-        status: true,
-        reviewedByUserId: true,
-        reviewedAt: true,
-        reviewNote: true,
-        createdAt: true,
-        updatedAt: true,
-
-        employee: {
           select: {
             id: true,
-            employeeCode: true,
-            firstName: true,
-            lastName: true,
+            type: true,
+            title: true,
+            originalFileName: true,
+            mimeType: true,
+            fileSize: true,
+            status: true,
+            reviewedByUserId: true,
+            reviewedAt: true,
+            reviewNote: true,
+            createdAt: true,
+            updatedAt: true,
+
+            employee: {
+              select: {
+                id: true,
+                employeeCode: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
           },
-        },
-      },
-    });
+        });
+        if (document.status !== DocumentStatus.VERIFIED) {
+          await this.notifications.suppressEntityDeliveries(
+            tx,
+            NotificationEntityType.DOCUMENT,
+            documentId,
+            NotificationType.DOCUMENT_UPLOADED,
+          );
+          await this.notifications.createForUser(tx, {
+            userId: document.employee.userId,
+            actorUserId: adminUserId,
+            type: NotificationType.DOCUMENT_VERIFIED,
+            eventId: `document:${documentId}:${updated.updatedAt.toISOString()}:VERIFIED`,
+            documentId,
+          });
+        }
+        return updated;
+      })
+      .catch(rethrowConcurrentMutation);
 
     return {
       success: true,
@@ -553,6 +607,9 @@ export class DocumentsService {
       },
       select: {
         id: true,
+        status: true,
+        updatedAt: true,
+        employee: { select: { userId: true } },
       },
     });
 
@@ -560,42 +617,64 @@ export class DocumentsService {
       throw new NotFoundException('Document not found.');
     }
 
-    const updatedDocument = await this.prisma.employeeDocument.update({
-      where: {
-        id: documentId,
-      },
+    const updatedDocument = await this.prisma
+      .$transaction(async (tx) => {
+        const updated = await tx.employeeDocument.update({
+          where: {
+            id: documentId,
+            status: document.status,
+            updatedAt: document.updatedAt,
+          },
 
-      data: {
-        status: DocumentStatus.REJECTED,
-        reviewedByUserId: adminUserId,
-        reviewedAt: new Date(),
-        reviewNote: dto.note.trim(),
-      },
+          data: {
+            status: DocumentStatus.REJECTED,
+            reviewedByUserId: adminUserId,
+            reviewedAt: new Date(),
+            reviewNote: dto.note.trim(),
+          },
 
-      select: {
-        id: true,
-        type: true,
-        title: true,
-        originalFileName: true,
-        mimeType: true,
-        fileSize: true,
-        status: true,
-        reviewedByUserId: true,
-        reviewedAt: true,
-        reviewNote: true,
-        createdAt: true,
-        updatedAt: true,
-
-        employee: {
           select: {
             id: true,
-            employeeCode: true,
-            firstName: true,
-            lastName: true,
+            type: true,
+            title: true,
+            originalFileName: true,
+            mimeType: true,
+            fileSize: true,
+            status: true,
+            reviewedByUserId: true,
+            reviewedAt: true,
+            reviewNote: true,
+            createdAt: true,
+            updatedAt: true,
+
+            employee: {
+              select: {
+                id: true,
+                employeeCode: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
           },
-        },
-      },
-    });
+        });
+        if (document.status !== DocumentStatus.REJECTED) {
+          await this.notifications.suppressEntityDeliveries(
+            tx,
+            NotificationEntityType.DOCUMENT,
+            documentId,
+            NotificationType.DOCUMENT_UPLOADED,
+          );
+          await this.notifications.createForUser(tx, {
+            userId: document.employee.userId,
+            actorUserId: adminUserId,
+            type: NotificationType.DOCUMENT_REJECTED,
+            eventId: `document:${documentId}:${updated.updatedAt.toISOString()}:REJECTED`,
+            documentId,
+          });
+        }
+        return updated;
+      })
+      .catch(rethrowConcurrentMutation);
 
     return {
       success: true,

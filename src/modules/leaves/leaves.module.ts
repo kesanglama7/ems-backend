@@ -1,3 +1,4 @@
+import { NotificationsModule } from '../notifications/notifications.module';
 import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module';
@@ -13,7 +14,7 @@ import { LeaveSchedulerService } from './leave-scheduler.service';
 import { StorageModule } from '../storage/storage.module';
 
 @Module({
-  imports: [AuthModule, StorageModule],
+  imports: [NotificationsModule, AuthModule, StorageModule],
 
   controllers: [LeaveTypesController, LeavesController, AdminLeavesController],
 

@@ -1,20 +1,16 @@
-export enum PushNotificationType {
-  LEAVE_REQUESTED = 'LEAVE_REQUESTED',
-  LEAVE_APPROVED = 'LEAVE_APPROVED',
-  LEAVE_REJECTED = 'LEAVE_REJECTED',
-  LEAVE_AUTO_REJECTED = 'LEAVE_AUTO_REJECTED',
-  LEAVE_CANCELLED = 'LEAVE_CANCELLED',
-  LEAVE_REMINDER = 'LEAVE_REMINDER',
-  LEAVE_CREATED_BY_ADMIN = 'LEAVE_CREATED_BY_ADMIN',
-  EMPLOYEE_REQUEST_CREATED = 'EMPLOYEE_REQUEST_CREATED',
-  EMPLOYEE_REQUEST_STATUS_CHANGED = 'EMPLOYEE_REQUEST_STATUS_CHANGED',
-  EMPLOYEE_REQUEST_ASSIGNED = 'EMPLOYEE_REQUEST_ASSIGNED',
-}
+import type { Notification } from '@prisma/client';
 
-export type PushNotification = {
-  type: PushNotificationType;
-  title: string;
-  message: string;
-  leaveRequestId?: string;
-  employeeRequestId?: string;
-};
+export type PushNotification = Pick<
+  Notification,
+  | 'id'
+  | 'type'
+  | 'category'
+  | 'title'
+  | 'message'
+  | 'entityType'
+  | 'entityId'
+  | 'createdAt'
+  | 'expiresAt'
+>;
+export type PushSendResult =
+  { accepted: true } | { accepted: false; errorCode: string };

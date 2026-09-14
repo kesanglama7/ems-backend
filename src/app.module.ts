@@ -1,3 +1,4 @@
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -34,6 +35,7 @@ import { EmployeeRequestsModule } from './modules/employee-requests/employee-req
     LeavesModule,
     DashboardModule,
     FirebaseModule,
+    NotificationsModule,
     EmployeeRequestsModule,
   ],
   controllers: [AppController],

@@ -1,3 +1,5 @@
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '@prisma/client';
 import {
   BadRequestException,
   ConflictException,
@@ -22,7 +24,10 @@ import { AdminUpdateAttendanceDto } from './dto/admin-update-attendance.dto';
 
 @Injectable()
 export class AttendanceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   // ─── Employee Endpoints ────────────────────────────────────────────────────
 
@@ -809,7 +814,7 @@ export class AttendanceService {
         },
       });
 
-      await tx.attendanceAudit.create({
+      const audit = await tx.attendanceAudit.create({
         data: {
           attendanceId: record.id,
           adminUserId,
@@ -829,6 +834,17 @@ export class AttendanceService {
         },
       });
 
+      const recipient = await tx.employee.findUniqueOrThrow({
+        where: { id: employee.id },
+        select: { userId: true },
+      });
+      await this.notifications.createForUser(tx, {
+        userId: recipient.userId,
+        actorUserId: adminUserId,
+        type: NotificationType.ATTENDANCE_CREATED_BY_ADMIN,
+        eventId: audit.id,
+        attendanceId: record.id,
+      });
       return record;
     });
 
@@ -913,6 +929,7 @@ export class AttendanceService {
 
     const finalCheckInAt = newCheckInAt ?? existing.checkInAt;
     const finalWorkDate = newWorkDate ?? existing.workDate;
+    const finalCheckOutAt = newCheckOutAt ?? existing.checkOutAt;
 
     // Recalculate scheduled times from the (possibly new) work date
     const scheduledStartAt = this.buildDateTimeFromTime(
@@ -931,7 +948,7 @@ export class AttendanceService {
 
     const metrics = calculateAttendanceMetrics({
       checkInAt: finalCheckInAt,
-      checkOutAt: newCheckOutAt ?? existing.checkOutAt,
+      checkOutAt: finalCheckOutAt,
       scheduledStartAt,
       scheduledEndAt,
       gracePeriodMinutes: officeSetting.gracePeriodMinutes ?? 0,
@@ -943,11 +960,11 @@ export class AttendanceService {
       officeSetting.timezone,
     );
     let newStatus: AttendanceStatus;
-    if (newCheckOutAt) {
+    if (finalCheckOutAt) {
       newStatus = AttendanceStatus.COMPLETED;
-    } else if (!newCheckOutAt && finalWorkDate < currentWorkDate) {
+    } else if (finalWorkDate < currentWorkDate) {
       newStatus = AttendanceStatus.MISSING_CHECKOUT;
-    } else if (!newCheckOutAt && existing.status === AttendanceStatus.OPEN) {
+    } else if (existing.status === AttendanceStatus.OPEN) {
       newStatus = AttendanceStatus.OPEN;
     } else {
       newStatus = AttendanceStatus.MISSING_CHECKOUT;
@@ -1001,7 +1018,7 @@ export class AttendanceService {
         totalMinutes: record.totalMinutes,
       };
 
-      await tx.attendanceAudit.create({
+      const audit = await tx.attendanceAudit.create({
         data: {
           attendanceId: record.id,
           adminUserId,
@@ -1012,6 +1029,31 @@ export class AttendanceService {
         },
       });
 
+      const recipient = await tx.employee.findUniqueOrThrow({
+        where: { id: existing.employeeId },
+        select: { userId: true },
+      });
+      const changed =
+        record.workDate.getTime() !== existing.workDate.getTime() ||
+        record.checkInAt.getTime() !== existing.checkInAt.getTime() ||
+        (record.checkOutAt?.getTime() ?? null) !==
+          (existing.checkOutAt?.getTime() ?? null) ||
+        record.status !== existing.status ||
+        record.isLate !== existing.isLate ||
+        record.lateMinutes !== existing.lateMinutes ||
+        record.earlyMinutes !== existing.earlyMinutes ||
+        record.afterHoursMinutes !== existing.afterHoursMinutes ||
+        record.totalMinutes !== existing.totalMinutes ||
+        record.overtimeMinutes !== existing.overtimeMinutes ||
+        record.scheduledMinutes !== existing.scheduledMinutes;
+      if (changed)
+        await this.notifications.createForUser(tx, {
+          userId: recipient.userId,
+          actorUserId: adminUserId,
+          type: NotificationType.ATTENDANCE_UPDATED_BY_ADMIN,
+          eventId: audit.id,
+          attendanceId: record.id,
+        });
       return record;
     });
 

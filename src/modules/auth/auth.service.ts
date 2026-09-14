@@ -304,19 +304,27 @@ export class AuthService {
          * Revoke only the current
          * device/browser session.
          */
-        await this.prisma.authSession.updateMany({
-          where: {
-            id: payload.sid,
+        await this.prisma.$transaction([
+          this.prisma.authSession.updateMany({
+            where: {
+              id: payload.sid,
 
-            userId: payload.sub,
+              userId: payload.sub,
 
-            revokedAt: null,
-          },
+              revokedAt: null,
+            },
 
-          data: {
-            revokedAt: new Date(),
-          },
-        });
+            data: {
+              revokedAt: new Date(),
+            },
+          }),
+          this.prisma.pushDeviceToken.deleteMany({
+            where: {
+              userId: payload.sub,
+              OR: [{ sessionId: payload.sid }, { sessionId: null }],
+            },
+          }),
+        ]);
       }
     } catch {
       /*
@@ -375,6 +383,7 @@ export class AuthService {
      * session atomically.
      */
     await this.prisma.$transaction([
+      this.prisma.pushDeviceToken.deleteMany({ where: { userId } }),
       this.prisma.user.update({
         where: {
           id: userId,

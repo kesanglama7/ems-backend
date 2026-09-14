@@ -1,3 +1,4 @@
+import { rethrowConcurrentMutation } from '../notifications/concurrent-mutation';
 import {
   BadRequestException,
   ConflictException,
@@ -5,7 +6,6 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -16,8 +16,8 @@ import {
   Role,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { FirebaseService } from '../firebase/firebase.service';
-import { PushNotificationType as NotificationType } from '../firebase/firebase-notification.types';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '@prisma/client';
 import { StorageService } from '../storage/storage.service';
 import { CreateEmployeeRequestDto } from './dto/create-employee-request.dto';
 import { DismissRequestDto } from './dto/dismiss-request.dto';
@@ -68,11 +68,9 @@ const RESOLUTION_REQUIRED_STATUSES: readonly EmployeeRequestStatus[] = [
 
 @Injectable()
 export class EmployeeRequestsService {
-  private readonly logger = new Logger(EmployeeRequestsService.name);
-
   constructor(
     private readonly prisma: PrismaService,
-    private readonly notifications: FirebaseService,
+    private readonly notifications: NotificationsService,
     private readonly storageService: StorageService,
   ) {}
 
@@ -183,41 +181,38 @@ export class EmployeeRequestsService {
         );
     }
 
-    const request = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.employeeRequest.create({
-        data: {
-          employeeId: employee.id,
-          category: dto.category,
-          subject,
-          description,
-          priority: dto.priority,
-          attendanceId: dto.attendanceId,
-        },
-        include: requestInclude,
-      });
+    const request = await this.prisma
+      .$transaction(async (tx) => {
+        const created = await tx.employeeRequest.create({
+          data: {
+            employeeId: employee.id,
+            category: dto.category,
+            subject,
+            description,
+            priority: dto.priority,
+            attendanceId: dto.attendanceId,
+          },
+          include: requestInclude,
+        });
 
-      await tx.employeeRequestActivity.create({
-        data: {
-          requestId: created.id,
-          performedByUserId: userId,
-          action: EmployeeRequestActivityAction.CREATED,
-          toStatus: EmployeeRequestStatus.OPEN,
-        },
-      });
+        const activity = await tx.employeeRequestActivity.create({
+          data: {
+            requestId: created.id,
+            performedByUserId: userId,
+            action: EmployeeRequestActivityAction.CREATED,
+            toStatus: EmployeeRequestStatus.OPEN,
+          },
+        });
 
-      return created;
-    });
-
-    await this.notifySafely(
-      () =>
-        this.notifications.sendToActiveAdmins({
+        await this.notifications.createForActiveAdmins(tx, {
           type: NotificationType.EMPLOYEE_REQUEST_CREATED,
-          title: 'New employee request',
-          message: `${employee.firstName} ${employee.lastName}: ${request.subject}`,
-          employeeRequestId: request.id,
-        }),
-      `new employee request ${request.id}`,
-    );
+          actorUserId: userId,
+          eventId: activity.id,
+          employeeRequestId: created.id,
+        });
+        return created;
+      })
+      .catch(rethrowConcurrentMutation);
 
     return {
       success: true,
@@ -296,21 +291,23 @@ export class EmployeeRequestsService {
     });
     if (!existing) throw new NotFoundException('Employee request not found.');
 
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const request = await tx.employeeRequest.update({
-        where: { id: requestId },
-        data: { adminNote: dto.adminNote?.trim() || null },
-        include: requestInclude,
-      });
-      await tx.employeeRequestActivity.create({
-        data: {
-          requestId,
-          performedByUserId: adminUserId,
-          action: EmployeeRequestActivityAction.ADMIN_NOTE_UPDATED,
-        },
-      });
-      return request;
-    });
+    const updated = await this.prisma
+      .$transaction(async (tx) => {
+        const request = await tx.employeeRequest.update({
+          where: { id: requestId },
+          data: { adminNote: dto.adminNote?.trim() || null },
+          include: requestInclude,
+        });
+        await tx.employeeRequestActivity.create({
+          data: {
+            requestId,
+            performedByUserId: adminUserId,
+            action: EmployeeRequestActivityAction.ADMIN_NOTE_UPDATED,
+          },
+        });
+        return request;
+      })
+      .catch(rethrowConcurrentMutation);
     return {
       success: true,
       message: 'Admin note updated successfully.',
@@ -332,43 +329,45 @@ export class EmployeeRequestsService {
       throw new ConflictException('This request is already closed.');
     }
 
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const request = await tx.employeeRequest.update({
-        where: { id: requestId },
-        data: {
-          status: EmployeeRequestStatus.DISMISSED,
-          assignedAdminId: existing.assignedAdminId ?? adminUserId,
-          dismissedByAdminId: adminUserId,
-          dismissalReason: dto.reason,
-          dismissalNote: dto.note?.trim() || null,
-          dismissedAt: new Date(),
-        },
-        include: requestInclude,
-      });
+    const updated = await this.prisma
+      .$transaction(async (tx) => {
+        const request = await tx.employeeRequest.update({
+          where: {
+            id: requestId,
+            status: existing.status,
+            updatedAt: existing.updatedAt,
+          },
+          data: {
+            status: EmployeeRequestStatus.DISMISSED,
+            assignedAdminId: existing.assignedAdminId ?? adminUserId,
+            dismissedByAdminId: adminUserId,
+            dismissalReason: dto.reason,
+            dismissalNote: dto.note?.trim() || null,
+            dismissedAt: new Date(),
+          },
+          include: requestInclude,
+        });
 
-      await tx.employeeRequestActivity.create({
-        data: {
-          requestId,
-          performedByUserId: adminUserId,
-          action: EmployeeRequestActivityAction.DISMISSED,
-          fromStatus: existing.status,
-          toStatus: EmployeeRequestStatus.DISMISSED,
-        },
-      });
+        const activity = await tx.employeeRequestActivity.create({
+          data: {
+            requestId,
+            performedByUserId: adminUserId,
+            action: EmployeeRequestActivityAction.DISMISSED,
+            fromStatus: existing.status,
+            toStatus: EmployeeRequestStatus.DISMISSED,
+          },
+        });
 
-      return request;
-    });
-
-    await this.notifySafely(
-      () =>
-        this.notifications.sendToUser(existing.employee.userId, {
-          type: NotificationType.EMPLOYEE_REQUEST_STATUS_CHANGED,
-          title: 'Request dismissed',
-          message: existing.subject,
-          employeeRequestId: existing.id,
-        }),
-      `dismissed employee request ${requestId}`,
-    );
+        await this.notifications.createForUser(tx, {
+          userId: existing.employee.userId,
+          type: NotificationType.EMPLOYEE_REQUEST_DISMISSED,
+          actorUserId: adminUserId,
+          eventId: activity.id,
+          employeeRequestId: requestId,
+        });
+        return request;
+      })
+      .catch(rethrowConcurrentMutation);
 
     return {
       success: true,
@@ -381,27 +380,60 @@ export class EmployeeRequestsService {
     const employee = await this.getEmployee(userId);
     const existing = await this.prisma.employeeRequest.findFirst({
       where: { id: requestId, employeeId: employee.id },
-      select: { id: true, status: true },
+      select: {
+        id: true,
+        status: true,
+        updatedAt: true,
+        assignedAdminId: true,
+      },
     });
     if (!existing) throw new NotFoundException('Employee request not found.');
     if (existing.status !== EmployeeRequestStatus.OPEN)
       throw new ConflictException('Only an open request can be cancelled.');
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.employeeRequest.update({
-        where: { id: requestId },
-        data: { status: EmployeeRequestStatus.CANCELLED },
-      });
-      await tx.employeeRequestActivity.create({
-        data: {
-          requestId,
-          performedByUserId: userId,
-          action: EmployeeRequestActivityAction.CANCELLED,
-          fromStatus: existing.status,
-          toStatus: EmployeeRequestStatus.CANCELLED,
-        },
-      });
-    });
+    await this.prisma
+      .$transaction(async (tx) => {
+        await tx.employeeRequest.update({
+          where: {
+            id: requestId,
+            status: existing.status,
+            updatedAt: existing.updatedAt,
+          },
+          data: { status: EmployeeRequestStatus.CANCELLED },
+        });
+        const activity = await tx.employeeRequestActivity.create({
+          data: {
+            requestId,
+            performedByUserId: userId,
+            action: EmployeeRequestActivityAction.CANCELLED,
+            fromStatus: existing.status,
+            toStatus: EmployeeRequestStatus.CANCELLED,
+          },
+        });
+        const event = {
+          type: NotificationType.EMPLOYEE_REQUEST_CANCELLED,
+          actorUserId: userId,
+          eventId: activity.id,
+          employeeRequestId: requestId,
+        };
+        const assignedAdmin = existing.assignedAdminId
+          ? await tx.user.findFirst({
+              where: {
+                id: existing.assignedAdminId,
+                role: 'ADMIN',
+                status: 'ACTIVE',
+              },
+              select: { id: true },
+            })
+          : null;
+        if (assignedAdmin)
+          await this.notifications.createForUser(tx, {
+            ...event,
+            userId: assignedAdmin.id,
+          });
+        else await this.notifications.createForActiveAdmins(tx, event);
+      })
+      .catch(rethrowConcurrentMutation);
     return { success: true, message: 'Request cancelled successfully.' };
   }
 
@@ -413,7 +445,13 @@ export class EmployeeRequestsService {
     const [request, admin] = await Promise.all([
       this.prisma.employeeRequest.findUnique({
         where: { id: requestId },
-        select: { id: true, status: true },
+        select: {
+          id: true,
+          status: true,
+          updatedAt: true,
+          assignedAdminId: true,
+          employee: { select: { userId: true } },
+        },
       }),
       this.prisma.user.findFirst({
         where: { id: adminUserId, role: Role.ADMIN, status: 'ACTIVE' },
@@ -425,36 +463,57 @@ export class EmployeeRequestsService {
     if (CLOSED_REQUEST_STATUSES.includes(request.status)) {
       throw new ConflictException('A closed request cannot be assigned.');
     }
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const data = await tx.employeeRequest.update({
-        where: { id: requestId },
-        data: {
-          assignedAdminId: adminUserId,
-          status: EmployeeRequestStatus.IN_PROGRESS,
-        },
-        include: requestInclude,
-      });
-      await tx.employeeRequestActivity.create({
-        data: {
-          requestId,
-          performedByUserId: performedByAdminUserId,
-          action: EmployeeRequestActivityAction.ASSIGNED,
-          fromStatus: request.status,
-          toStatus: EmployeeRequestStatus.IN_PROGRESS,
-        },
-      });
-      return data;
-    });
-    await this.notifySafely(
-      () =>
-        this.notifications.sendToUser(adminUserId, {
-          type: NotificationType.EMPLOYEE_REQUEST_ASSIGNED,
-          title: 'Employee request assigned',
-          message: updated.subject,
-          employeeRequestId: updated.id,
-        }),
-      `assigned employee request ${requestId}`,
-    );
+    if (
+      request.assignedAdminId === adminUserId &&
+      request.status === EmployeeRequestStatus.IN_PROGRESS
+    ) {
+      throw new ConflictException(
+        'The request is already assigned to this admin.',
+      );
+    }
+    const updated = await this.prisma
+      .$transaction(async (tx) => {
+        const data = await tx.employeeRequest.update({
+          where: {
+            id: requestId,
+            status: request.status,
+            updatedAt: request.updatedAt,
+          },
+          data: {
+            assignedAdminId: adminUserId,
+            status: EmployeeRequestStatus.IN_PROGRESS,
+          },
+          include: requestInclude,
+        });
+        const activity = await tx.employeeRequestActivity.create({
+          data: {
+            requestId,
+            performedByUserId: performedByAdminUserId,
+            action: EmployeeRequestActivityAction.ASSIGNED,
+            fromStatus: request.status,
+            toStatus: EmployeeRequestStatus.IN_PROGRESS,
+          },
+        });
+        if (adminUserId !== performedByAdminUserId)
+          await this.notifications.createForUser(tx, {
+            userId: adminUserId,
+            type: NotificationType.EMPLOYEE_REQUEST_ASSIGNED,
+            actorUserId: performedByAdminUserId,
+            eventId: activity.id,
+            employeeRequestId: requestId,
+          });
+        if (request.status !== EmployeeRequestStatus.IN_PROGRESS)
+          await this.notifications.createForUser(tx, {
+            userId: request.employee.userId,
+            type: NotificationType.EMPLOYEE_REQUEST_STATUS_CHANGED,
+            requestStatus: data.status,
+            actorUserId: performedByAdminUserId,
+            eventId: activity.id,
+            employeeRequestId: requestId,
+          });
+        return data;
+      })
+      .catch(rethrowConcurrentMutation);
     return {
       success: true,
       message: 'Request assigned successfully.',
@@ -498,45 +557,47 @@ export class EmployeeRequestsService {
 
     const isFinalStatus = RESOLUTION_REQUIRED_STATUSES.includes(dto.status);
 
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const data = await tx.employeeRequest.update({
-        where: { id: requestId },
-        data: {
-          status: dto.status,
-          assignedAdminId:
-            dto.status === EmployeeRequestStatus.OPEN
-              ? null
-              : existing.assignedAdminId ?? adminUserId,
-          resolutionNote: isFinalStatus
-            ? dto.resolutionNote!.trim()
-            : null,
-          resolvedByAdminId: isFinalStatus ? adminUserId : null,
-          resolvedAt: isFinalStatus ? new Date() : null,
-        },
-        include: requestInclude,
-      });
-      await tx.employeeRequestActivity.create({
-        data: {
-          requestId,
-          performedByUserId: adminUserId,
-          action: EmployeeRequestActivityAction.STATUS_CHANGED,
-          fromStatus: existing.status,
-          toStatus: dto.status,
-        },
-      });
-      return data;
-    });
-
-    await this.notifySafely(
-      () =>
-        this.notifications.sendToUser(existing.employee.userId, {
+    const updated = await this.prisma
+      .$transaction(async (tx) => {
+        const data = await tx.employeeRequest.update({
+          where: {
+            id: requestId,
+            status: existing.status,
+            updatedAt: existing.updatedAt,
+          },
+          data: {
+            status: dto.status,
+            assignedAdminId:
+              dto.status === EmployeeRequestStatus.OPEN
+                ? null
+                : (existing.assignedAdminId ?? adminUserId),
+            resolutionNote: isFinalStatus ? dto.resolutionNote!.trim() : null,
+            resolvedByAdminId: isFinalStatus ? adminUserId : null,
+            resolvedAt: isFinalStatus ? new Date() : null,
+          },
+          include: requestInclude,
+        });
+        const activity = await tx.employeeRequestActivity.create({
+          data: {
+            requestId,
+            performedByUserId: adminUserId,
+            action: EmployeeRequestActivityAction.STATUS_CHANGED,
+            fromStatus: existing.status,
+            toStatus: dto.status,
+          },
+        });
+        await this.notifications.createForUser(tx, {
+          userId: existing.employee.userId,
           type: NotificationType.EMPLOYEE_REQUEST_STATUS_CHANGED,
-          title: `Request ${dto.status.toLowerCase().replace('_', ' ')}`,
-          message: existing.subject,
-          employeeRequestId: existing.id,
-        }),
-      `status change for employee request ${requestId}`,
-    );
+          requestStatus: data.status,
+          actorUserId: adminUserId,
+          eventId: activity.id,
+          employeeRequestId: requestId,
+        });
+        return data;
+      })
+      .catch(rethrowConcurrentMutation);
+
     return {
       success: true,
       message: 'Request status updated successfully.',
@@ -549,16 +610,18 @@ export class EmployeeRequestsService {
     query: RequestQueryDto,
     employeeView = false,
   ) {
-    const [data, total] = await this.prisma.$transaction([
-      this.prisma.employeeRequest.findMany({
-        where,
-        include: requestInclude,
-        orderBy: { [query.sortBy]: query.sortOrder },
-        skip: (query.page - 1) * query.limit,
-        take: query.limit,
-      }),
-      this.prisma.employeeRequest.count({ where }),
-    ]);
+    const [data, total] = await this.prisma
+      .$transaction([
+        this.prisma.employeeRequest.findMany({
+          where,
+          include: requestInclude,
+          orderBy: { [query.sortBy]: query.sortOrder },
+          skip: (query.page - 1) * query.limit,
+          take: query.limit,
+        }),
+        this.prisma.employeeRequest.count({ where }),
+      ])
+      .catch(rethrowConcurrentMutation);
     const enriched = await Promise.all(
       data.map((request) => this.withProfileImageUrl(request)),
     );
@@ -640,26 +703,29 @@ export class EmployeeRequestsService {
     };
   }
 
-  private forEmployee<T extends Record<string, any>>(request: T) {
-    const {
-      adminNote: _adminNote,
-      assignedAdmin: _assignedAdmin,
-      assignedAdminId: _assignedAdminId,
-      resolvedByAdmin: _resolvedByAdmin,
-      resolvedByAdminId: _resolvedByAdminId,
-      dismissedByAdmin: _dismissedByAdmin,
-      dismissedByAdminId: _dismissedByAdminId,
-      ...safeRequest
-    } = request;
-    if ('activities' in safeRequest && Array.isArray(safeRequest.activities)) {
-      return {
-        ...safeRequest,
-        activities: safeRequest.activities.filter(
-          (activity: { action: EmployeeRequestActivityAction }) =>
-            activity.action !==
-            EmployeeRequestActivityAction.ADMIN_NOTE_UPDATED,
-        ),
-      };
+  private forEmployee<T extends Record<string, unknown>>(request: T) {
+    const safeRequest: Record<string, unknown> = { ...request };
+    for (const key of [
+      'adminNote',
+      'assignedAdmin',
+      'assignedAdminId',
+      'resolvedByAdmin',
+      'resolvedByAdminId',
+      'dismissedByAdmin',
+      'dismissedByAdminId',
+    ])
+      delete safeRequest[key];
+    if (Array.isArray(safeRequest.activities)) {
+      const activities: unknown[] = safeRequest.activities;
+      safeRequest.activities = activities.filter(
+        (activity) =>
+          !(
+            activity &&
+            typeof activity === 'object' &&
+            'action' in activity &&
+            activity.action === EmployeeRequestActivityAction.ADMIN_NOTE_UPDATED
+          ),
+      );
     }
     return safeRequest;
   }
@@ -693,19 +759,5 @@ export class EmployeeRequestsService {
     });
     if (!employee) throw new NotFoundException('Employee profile not found.');
     return employee;
-  }
-
-  private async notifySafely(
-    send: () => Promise<unknown>,
-    context: string,
-  ) {
-    try {
-      await send();
-    } catch (error) {
-      this.logger.error(
-        `Notification delivery failed for ${context}.`,
-        error instanceof Error ? error.stack : String(error),
-      );
-    }
   }
 }

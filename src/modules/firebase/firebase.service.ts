@@ -5,7 +5,10 @@ import { getMessaging, Messaging } from 'firebase-admin/messaging';
 import { readFileSync } from 'node:fs';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDeviceTokenDto } from './dto/register-device-token.dto';
-import { PushNotification } from './firebase-notification.types';
+import type {
+  PushNotification,
+  PushSendResult,
+} from './firebase-notification.types';
 
 type ServiceAccountJson = {
   project_id: string;
@@ -13,21 +16,14 @@ type ServiceAccountJson = {
   client_email: string;
 };
 
-const INVALID_TOKEN_CODES = new Set([
-  'messaging/invalid-registration-token',
-  'messaging/registration-token-not-registered',
-]);
-
 @Injectable()
 export class FirebaseService implements OnModuleInit {
   private readonly logger = new Logger(FirebaseService.name);
   private messaging?: Messaging;
-
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
   ) {}
-
   onModuleInit() {
     const serviceAccount = this.loadServiceAccount();
     if (!serviceAccount) {
@@ -50,12 +46,56 @@ export class FirebaseService implements OnModuleInit {
     this.logger.log('Firebase Cloud Messaging is enabled.');
   }
 
-  async registerDevice(userId: string, dto: RegisterDeviceTokenDto) {
-    const data = await this.prisma.pushDeviceToken.upsert({
-      where: { token: dto.token },
-      create: { userId, token: dto.token, platform: dto.platform },
-      update: { userId, platform: dto.platform },
-      select: { id: true, platform: true, createdAt: true, updatedAt: true },
+  async registerDevice(
+    userId: string,
+    sessionId: string,
+    dto: RegisterDeviceTokenDto,
+  ) {
+    const data = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.pushDeviceToken.findUnique({
+        where: { token: dto.token },
+        select: { id: true, userId: true, sessionId: true },
+      });
+      if (
+        existing &&
+        (existing.userId !== userId || existing.sessionId !== sessionId)
+      ) {
+        await tx.notificationDelivery.updateMany({
+          where: {
+            deviceTokenId: existing.id,
+            status: { in: ['PENDING', 'RETRY', 'PROCESSING'] },
+          },
+          data: {
+            status: 'SKIPPED',
+            claimToken: null,
+            lockedUntil: null,
+            lastErrorCode: 'device/ownership-changed',
+          },
+        });
+      }
+      return tx.pushDeviceToken.upsert({
+        where: { token: dto.token },
+        create: {
+          userId,
+          sessionId,
+          token: dto.token,
+          platform: dto.platform,
+          lastSeenAt: new Date(),
+        },
+        update: {
+          userId,
+          sessionId,
+          platform: dto.platform,
+          lastSeenAt: new Date(),
+        },
+        select: {
+          id: true,
+          platform: true,
+          createdAt: true,
+          updatedAt: true,
+          lastSeenAt: true,
+        },
+      });
     });
     return {
       success: true,
@@ -64,8 +104,10 @@ export class FirebaseService implements OnModuleInit {
     };
   }
 
-  async unregisterDevice(userId: string, token: string) {
-    await this.prisma.pushDeviceToken.deleteMany({ where: { userId, token } });
+  async unregisterDevice(userId: string, sessionId: string, token: string) {
+    await this.prisma.pushDeviceToken.deleteMany({
+      where: { userId, token, OR: [{ sessionId }, { sessionId: null }] },
+    });
     return {
       success: true,
       message: 'Device removed from push notifications.',
@@ -75,42 +117,33 @@ export class FirebaseService implements OnModuleInit {
   async listMyDevices(userId: string) {
     const data = await this.prisma.pushDeviceToken.findMany({
       where: { userId },
-      select: { id: true, platform: true, createdAt: true, updatedAt: true },
+      select: {
+        id: true,
+        platform: true,
+        createdAt: true,
+        updatedAt: true,
+        lastSeenAt: true,
+      },
       orderBy: { updatedAt: 'desc' },
     });
     return { success: true, data };
   }
 
-  async sendToUser(userId: string, notification: PushNotification) {
-    const devices = await this.prisma.pushDeviceToken.findMany({
-      where: { userId },
-      select: { token: true },
-    });
-    return this.sendToTokens(
-      devices.map(({ token }) => token),
-      notification,
-    );
-  }
-
-  async sendToActiveAdmins(notification: PushNotification) {
-    const devices = await this.prisma.pushDeviceToken.findMany({
-      where: { user: { role: 'ADMIN', status: 'ACTIVE' } },
-      select: { token: true },
-    });
-    return this.sendToTokens(
-      devices.map(({ token }) => token),
-      notification,
-    );
-  }
-
   async getDeliveryStatus(userId: string) {
+    const now = new Date();
+    const eligible = {
+      lastSeenAt: { gt: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) },
+      OR: [
+        { sessionId: null },
+        { session: { revokedAt: null, expiresAt: { gt: now } } },
+      ],
+    };
     const [currentUserDeviceCount, activeAdminDeviceCount] = await Promise.all([
-      this.prisma.pushDeviceToken.count({ where: { userId } }),
+      this.prisma.pushDeviceToken.count({ where: { userId, ...eligible } }),
       this.prisma.pushDeviceToken.count({
-        where: { user: { role: 'ADMIN', status: 'ACTIVE' } },
+        where: { user: { role: 'ADMIN', status: 'ACTIVE' }, ...eligible },
       }),
     ]);
-
     return {
       success: true,
       data: {
@@ -121,96 +154,71 @@ export class FirebaseService implements OnModuleInit {
     };
   }
 
-  // These two adapters keep domain transactions readable while delivery has
-  // moved from Prisma records to Firebase Cloud Messaging.
-  createForUser(
-    _client: unknown,
-    notification: PushNotification & { userId: string },
-  ) {
-    const { userId, ...message } = notification;
-    return this.sendToUser(userId, message);
-  }
-
-  createForActiveAdmins(_client: unknown, notification: PushNotification) {
-    return this.sendToActiveAdmins(notification);
-  }
-
-  private async sendToTokens(tokens: string[], notification: PushNotification) {
-    if (!tokens.length) {
-      this.logger.warn(
-        `Skipped ${notification.type}: no registered recipient devices.`,
-      );
-      return { successCount: 0, failureCount: 0 };
-    }
-    if (!this.messaging) {
-      this.logger.warn(`Skipped ${notification.type}: Firebase is disabled.`);
-      return { successCount: 0, failureCount: tokens.length };
-    }
-
-    let successCount = 0;
-    let failureCount = 0;
-    const invalidTokens: string[] = [];
-
-    for (let index = 0; index < tokens.length; index += 500) {
-      const batch = tokens.slice(index, index + 500);
-      try {
-        const result = await this.messaging.sendEachForMulticast({
-          tokens: batch,
-          notification: {
-            title: notification.title,
-            body: notification.message,
+  async sendToToken(
+    token: string,
+    notification: PushNotification,
+  ): Promise<PushSendResult> {
+    if (!this.messaging)
+      return { accepted: false, errorCode: 'firebase/disabled' };
+    const remainingSeconds = Math.floor(
+      (notification.expiresAt.getTime() - Date.now()) / 1000,
+    );
+    if (remainingSeconds <= 0)
+      return { accepted: false, errorCode: 'notification/expired' };
+    const ttl = Math.min(
+      remainingSeconds,
+      notification.type === 'LEAVE_REMINDER' ? 3600 : 86400,
+    );
+    try {
+      await this.messaging.send({
+        token,
+        notification: { title: notification.title, body: notification.message },
+        data: {
+          notificationId: notification.id,
+          type: notification.type,
+          category: notification.category,
+          entityType: notification.entityType,
+          entityId: notification.entityId,
+          createdAt: notification.createdAt.toISOString(),
+          expiresAt: notification.expiresAt.toISOString(),
+          // Keep existing client invalidation keys while extending the generic entity contract.
+          ...(notification.entityType === 'LEAVE_REQUEST' && {
+            leaveRequestId: notification.entityId,
+          }),
+          ...(notification.entityType === 'EMPLOYEE_REQUEST' && {
+            employeeRequestId: notification.entityId,
+          }),
+          ...(notification.entityType === 'DOCUMENT' && {
+            documentId: notification.entityId,
+          }),
+          ...(notification.entityType === 'ATTENDANCE' && {
+            attendanceId: notification.entityId,
+          }),
+        },
+        webpush: {
+          headers: { TTL: String(ttl), Urgency: 'normal' },
+          notification: { tag: notification.id, renotify: false },
+        },
+        android: { ttl: ttl * 1000 },
+        apns: {
+          headers: {
+            'apns-expiration': String(Math.floor(Date.now() / 1000) + ttl),
           },
-          data: this.toMessageData(notification),
-        });
-        successCount += result.successCount;
-        failureCount += result.failureCount;
-        result.responses.forEach((response, responseIndex) => {
-          if (!response.success) {
-            this.logger.warn(
-              `Firebase delivery failed for ${notification.type}: ${response.error?.code ?? 'unknown-error'} - ${response.error?.message ?? 'No error message'}`,
-            );
-          }
-          if (
-            !response.success &&
-            response.error?.code &&
-            INVALID_TOKEN_CODES.has(response.error.code)
-          ) {
-            invalidTokens.push(batch[responseIndex]);
-          }
-        });
-      } catch (error) {
-        failureCount += batch.length;
-        this.logger.error(
-          `Firebase push batch failed for ${notification.type}.`,
-          error instanceof Error ? error.stack : String(error),
-        );
-      }
-    }
-
-    if (invalidTokens.length) {
-      await this.prisma.pushDeviceToken.deleteMany({
-        where: { token: { in: invalidTokens } },
+        },
       });
+      return { accepted: true };
+    } catch (error: unknown) {
+      const code =
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        typeof error.code === 'string'
+          ? error.code
+          : 'messaging/unknown-error';
+      this.logger.warn(`FCM send failed: ${code}`);
+      return { accepted: false, errorCode: code };
     }
-
-
-    this.logger.log(
-      `Firebase ${notification.type}: ${successCount} delivered, ${failureCount} failed, ${invalidTokens.length} invalid tokens removed.`,
-    );
-
-    return { successCount, failureCount };
   }
-
-  private toMessageData(notification: PushNotification) {
-    return Object.fromEntries(
-      Object.entries({
-        type: notification.type,
-        leaveRequestId: notification.leaveRequestId,
-        employeeRequestId: notification.employeeRequestId,
-      }).filter((entry): entry is [string, string] => Boolean(entry[1])),
-    );
-  }
-
   private loadServiceAccount(): ServiceAccountJson | undefined {
     const inlineJson = this.config.get<string>('FIREBASE_SERVICE_ACCOUNT_JSON');
     const filePath = this.config.get<string>('FIREBASE_SERVICE_ACCOUNT_PATH');
@@ -225,7 +233,7 @@ export class FirebaseService implements OnModuleInit {
         );
       }
       return parsed as ServiceAccountJson;
-    } catch (error) {
+    } catch (error: unknown) {
       throw new Error(
         `Invalid Firebase service-account configuration: ${error instanceof Error ? error.message : String(error)}`,
       );

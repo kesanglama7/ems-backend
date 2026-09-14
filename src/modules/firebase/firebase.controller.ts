@@ -21,7 +21,7 @@ export class FirebaseController {
     @CurrentUser() user: RequestUser,
     @Body() dto: RegisterDeviceTokenDto,
   ) {
-    return this.firebase.registerDevice(user.id, dto);
+    return this.firebase.registerDevice(user.id, user.sessionId, dto);
   }
 
   @Get('devices')
@@ -42,6 +42,6 @@ export class FirebaseController {
     @CurrentUser() user: RequestUser,
     @Body() dto: UnregisterDeviceTokenDto,
   ) {
-    return this.firebase.unregisterDevice(user.id, dto.token);
+    return this.firebase.unregisterDevice(user.id, user.sessionId, dto.token);
   }
 }

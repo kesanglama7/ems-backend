@@ -1,3 +1,4 @@
+import { NotificationsModule } from '../notifications/notifications.module';
 import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module';
@@ -8,7 +9,7 @@ import { AttendanceService } from './attendance.service';
 import { AdminEmployeeAttendanceController } from './admin-employee-attendance.controller';
 
 @Module({
-  imports: [AuthModule],
+  imports: [NotificationsModule, AuthModule],
   controllers: [
     AttendanceController,
     AdminAttendanceController,
