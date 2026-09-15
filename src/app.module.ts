@@ -16,6 +16,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { FirebaseModule } from './modules/firebase/firebase.module';
 import { EmployeeRequestsModule } from './modules/employee-requests/employee-requests.module';
+import { AnnouncementsModule } from './modules/announcements/announcements.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { EmployeeRequestsModule } from './modules/employee-requests/employee-req
     FirebaseModule,
     NotificationsModule,
     EmployeeRequestsModule,
+    AnnouncementsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

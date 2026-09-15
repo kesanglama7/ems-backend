@@ -2,6 +2,10 @@ import { EmployeeRequestStatus, NotificationType } from '@prisma/client';
 
 // Keep request descriptions, document URLs, private notes and rejection reasons out of push payloads.
 const templates: Record<NotificationType, [string, string]> = {
+  ANNOUNCEMENT_PUBLISHED: [
+    'Company announcement',
+    'A new company announcement is available. Open it to read the details.',
+  ],
   LEAVE_REQUESTED: [
     'New leave request',
     'An employee submitted a leave request. Open it to review.',

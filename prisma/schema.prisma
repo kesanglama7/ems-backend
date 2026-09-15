@@ -138,6 +138,8 @@ model User {
   resolvedEmployeeRequests  EmployeeRequest[]         @relation("EmployeeRequestResolver")
   dismissedEmployeeRequests EmployeeRequest[]         @relation("EmployeeRequestDismisser")
   employeeRequestActivities EmployeeRequestActivity[]
+  authoredAnnouncements       Announcement[]          @relation("AnnouncementAuthor")
+  announcementReceipts        AnnouncementReceipt[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -170,6 +172,7 @@ model Department {
   isActive    Boolean @default(true)
 
   employee Employee[]
+  announcements Announcement[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -458,9 +461,11 @@ enum NotificationCategory {
   REQUEST
   DOCUMENT
   ATTENDANCE
+  ANNOUNCEMENT
 }
 
 enum NotificationType {
+  ANNOUNCEMENT_PUBLISHED
   LEAVE_REQUESTED
   LEAVE_APPROVED
   LEAVE_REJECTED
@@ -483,6 +488,7 @@ enum NotificationType {
 }
 
 enum NotificationEntityType {
+  ANNOUNCEMENT
   LEAVE_REQUEST
   EMPLOYEE_REQUEST
   DOCUMENT
@@ -545,6 +551,63 @@ model NotificationDelivery {
   @@index([status, nextAttemptAt])
   @@index([status, lockedUntil])
   @@index([deviceTokenId])
+}
+
+enum AnnouncementStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum AnnouncementAudience {
+  ALL_EMPLOYEES
+  DEPARTMENT
+}
+
+enum AnnouncementPriority {
+  NORMAL
+  IMPORTANT
+  URGENT
+}
+
+model Announcement {
+  id                      String               @id @default(uuid())
+  title                   String               @db.VarChar(160)
+  body                    String               @db.Text
+  priority                AnnouncementPriority @default(NORMAL)
+  status                  AnnouncementStatus   @default(DRAFT)
+  audience                AnnouncementAudience @default(ALL_EMPLOYEES)
+  departmentId            String?
+  department              Department?          @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  showOnLogin             Boolean              @default(false)
+  acknowledgmentRequired Boolean              @default(false)
+  publishAt               DateTime?
+  publishedAt             DateTime?
+  expiresAt               DateTime?
+  archivedAt              DateTime?
+  authorId                String
+  author                  User                 @relation("AnnouncementAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  receipts                AnnouncementReceipt[]
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+
+  @@index([status, publishAt])
+  @@index([status, expiresAt])
+  @@index([departmentId])
+}
+
+model AnnouncementReceipt {
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt         DateTime?
+  acknowledgedAt DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@id([announcementId, userId])
+  @@index([userId, readAt])
 }
 
 model EmployeeRequest {

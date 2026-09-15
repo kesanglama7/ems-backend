@@ -39,9 +39,16 @@ export interface NotificationEvent {
   documentId?: string;
   attendanceId?: string;
   leaveBalanceId?: string;
+  announcementId?: string;
 }
 
 export function entityFor(event: NotificationEvent) {
+  if (event.announcementId)
+    return {
+      category: NotificationCategory.ANNOUNCEMENT,
+      entityType: NotificationEntityType.ANNOUNCEMENT,
+      entityId: event.announcementId,
+    };
   if (event.leaveRequestId)
     return {
       category: NotificationCategory.LEAVE,

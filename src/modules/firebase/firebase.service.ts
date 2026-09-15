@@ -194,6 +194,9 @@ export class FirebaseService implements OnModuleInit {
           ...(notification.entityType === 'ATTENDANCE' && {
             attendanceId: notification.entityId,
           }),
+          ...(notification.entityType === 'ANNOUNCEMENT' && {
+            announcementId: notification.entityId,
+          }),
         },
         webpush: {
           headers: { TTL: String(ttl), Urgency: 'normal' },

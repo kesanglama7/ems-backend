@@ -211,6 +211,16 @@ export class NotificationDispatcherService implements OnApplicationBootstrap {
   }
 
   private async actionable(type: string, entityType: string, entityId: string) {
+    if (entityType === 'ANNOUNCEMENT') {
+      const announcement = await this.prisma.announcement.findUnique({
+        where: { id: entityId },
+        select: { status: true, expiresAt: true },
+      });
+      return Boolean(
+        announcement && announcement.status === 'PUBLISHED' &&
+        (!announcement.expiresAt || announcement.expiresAt > new Date()),
+      );
+    }
     if (entityType === 'DOCUMENT' && type !== 'DOCUMENT_DELETED') {
       const document = await this.prisma.employeeDocument.findUnique({
         where: { id: entityId },
