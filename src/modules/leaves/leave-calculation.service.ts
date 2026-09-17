@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { LeaveDuration } from '@prisma/client';
+import { LeaveDuration, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 const DEFAULT_WORKING_DAYS = [
@@ -40,6 +40,7 @@ export class LeaveCalculationService {
     startValue: string,
     endValue: string,
     duration: LeaveDuration,
+    client: Prisma.TransactionClient = this.prisma,
   ) {
     const startDate = this.parseDate(startValue);
     const endDate = this.parseDate(endValue);
@@ -59,20 +60,31 @@ export class LeaveCalculationService {
         'Half-day leave can only be requested for one date.',
       );
 
-    const office = await this.prisma.officeSetting.findFirst({
+    const office = await client.officeSetting.findFirst({
       orderBy: { createdAt: 'asc' },
       select: { workingDays: true, timezone: true },
     });
     const workingDays = office?.workingDays.length
       ? office.workingDays
       : DEFAULT_WORKING_DAYS;
+    const holidays = await client.officeHoliday.findMany({
+      where: { isOfficeClosed: true, date: { gte: startDate, lte: endDate } },
+      select: { date: true },
+    });
+    const closedDates = new Set(
+      holidays.map((item) => item.date.toISOString().slice(0, 10)),
+    );
     let count = 0;
     for (
       const cursor = new Date(startDate);
       cursor <= endDate;
       cursor.setUTCDate(cursor.getUTCDate() + 1)
     ) {
-      if (workingDays.includes(WEEKDAYS[cursor.getUTCDay()])) count += 1;
+      if (
+        workingDays.includes(WEEKDAYS[cursor.getUTCDay()]) &&
+        !closedDates.has(cursor.toISOString().slice(0, 10))
+      )
+        count += 1;
     }
     if (!count)
       throw new BadRequestException(
@@ -89,9 +101,19 @@ export class LeaveCalculationService {
   }
 
   async reviewDeadline(startDate: Date, workingDays: string[]): Promise<Date> {
+    const holidays = await this.prisma.officeHoliday.findMany({
+      where: { isOfficeClosed: true, date: { lt: startDate } },
+      select: { date: true },
+    });
+    const closedDates = new Set(
+      holidays.map((item) => item.date.toISOString().slice(0, 10)),
+    );
     const previous = new Date(startDate);
     do previous.setUTCDate(previous.getUTCDate() - 1);
-    while (!workingDays.includes(WEEKDAYS[previous.getUTCDay()]));
+    while (
+      !workingDays.includes(WEEKDAYS[previous.getUTCDay()]) ||
+      closedDates.has(previous.toISOString().slice(0, 10))
+    );
     const office = await this.prisma.officeSetting.findFirst({
       orderBy: { createdAt: 'asc' },
       select: { timezone: true },

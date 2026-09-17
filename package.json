@@ -22,7 +22,8 @@
     "leave:backfill": "tsx prisma/backfill-leaves.ts",
     "test:notifications:integration": "npm run build && node --test test/notifications.integration.cjs",
     "prisma:generate": "prisma generate",
-    "db:migrate:deploy": "prisma migrate deploy"
+    "db:migrate:deploy": "prisma migrate deploy",
+    "test:office:integration": "npm run build && node test/office-features.integration.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

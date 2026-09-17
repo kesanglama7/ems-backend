@@ -29,6 +29,8 @@ export enum SortOrder {
 }
 
 export class RequestQueryDto {
+  @ApiPropertyOptional() @IsOptional() @IsUUID() requestCategoryId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() resourceId?: string;
   @ApiPropertyOptional({
     type: String,
     description: 'Search by request title, description, or employee',

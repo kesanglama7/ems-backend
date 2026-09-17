@@ -1,3 +1,11 @@
+# September 2026 office feature update
+
+Start with [deployment and frontend API handoff](docs/OFFICE_FEATURES_HANDOFF.md), [validation results](docs/VALIDATION.md), and [changed files](docs/CHANGED_FILES.md).
+
+This upgrade adds DOB/gender and birthdays, leave eligibility/assignments and late approval, immediate balances, early-checkout notifications, office holidays, resource tracking, request category management, and optional bill photos. Apply the included migration before starting the updated backend.
+
+---
+
 <p align="center">
   <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
 </p>

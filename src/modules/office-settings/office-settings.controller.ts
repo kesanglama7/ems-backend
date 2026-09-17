@@ -2,7 +2,6 @@ import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
 
 import {
   ApiBadRequestResponse,
-  ApiCookieAuth,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,

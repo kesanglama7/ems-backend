@@ -1,3 +1,6 @@
+import { ResourcesModule } from './modules/resources/resources.module';
+import { BirthdaysModule } from './modules/birthdays/birthdays.module';
+import { HolidaysModule } from './modules/holidays/holidays.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
@@ -39,6 +42,9 @@ import { AnnouncementsModule } from './modules/announcements/announcements.modul
     NotificationsModule,
     EmployeeRequestsModule,
     AnnouncementsModule,
+    BirthdaysModule,
+    HolidaysModule,
+    ResourcesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { EmployeeWorkMode } from '@prisma/client';
+import { EmployeeWorkMode, Gender } from '@prisma/client';
 import {
   IsDateString,
   IsEmail,
@@ -13,6 +13,19 @@ import {
 } from 'class-validator';
 
 export class CreateEmployeeDto {
+  @ApiPropertyOptional({
+    example: '1998-09-17',
+    description: 'Date of birth, YYYY-MM-DD. Optional for existing clients.',
+  })
+  @IsOptional()
+  @IsDateString({ strict: true })
+  dateOfBirth?: string;
+
+  @ApiPropertyOptional({ enum: Gender })
+  @IsOptional()
+  @IsEnum(Gender)
+  gender?: Gender;
+
   @ApiProperty({
     example: 'john@example.com',
   })

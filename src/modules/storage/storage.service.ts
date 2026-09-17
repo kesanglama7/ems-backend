@@ -4,7 +4,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 
 interface UploadFileInput {
   storagePath: string;
@@ -18,7 +18,7 @@ interface UploadFileInput {
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
 
-  private readonly supabase: SupabaseClient;
+  private readonly supabase: ReturnType<typeof createClient>;
   private readonly defaultBucket: string;
 
   constructor(private readonly configService: ConfigService) {

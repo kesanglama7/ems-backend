@@ -15,7 +15,6 @@ import {
   ApiBadRequestResponse,
   ApiBody,
   ApiConsumes,
-  ApiCookieAuth,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,

@@ -1,3 +1,5 @@
+import { Gender, LeaveAudience } from '@prisma/client';
+import { IsEnum } from 'class-validator';
 import {
   IsNumber,
   IsBoolean,
@@ -12,6 +14,23 @@ import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateLeaveTypeDto {
+  @ApiPropertyOptional({
+    enum: LeaveAudience,
+    description: 'ALL employees or explicitly SELECTED employees.',
+  })
+  @IsOptional()
+  @IsEnum(LeaveAudience)
+  audience?: LeaveAudience;
+  @ApiPropertyOptional({
+    enum: Gender,
+    nullable: true,
+    description:
+      'null means all genders; MALE or FEMALE restricts eligibility.',
+  })
+  @IsOptional()
+  @IsEnum(Gender)
+  eligibleGender?: Gender | null;
+
   @ApiPropertyOptional({
     example: 'Annual Leave',
   })

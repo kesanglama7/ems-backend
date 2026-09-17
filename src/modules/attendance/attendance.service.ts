@@ -1,3 +1,4 @@
+import { rethrowConcurrentMutation } from '../notifications/concurrent-mutation';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '@prisma/client';
 import {
@@ -71,6 +72,12 @@ export class AttendanceService {
         'You are on approved full-day leave today.',
       );
     }
+
+    const holiday = await this.prisma.officeHoliday.findUnique({
+      where: { date: workDate },
+    });
+    if (holiday?.isOfficeClosed)
+      throw new BadRequestException(`Office is closed today: ${holiday.name}.`);
 
     // Working day check
     if (!officeSetting.workingDays.includes(weekday)) {
@@ -212,6 +219,8 @@ export class AttendanceService {
         isLate: true,
         lateMinutes: true,
         earlyMinutes: true,
+        earlyCheckoutMinutes: true,
+        isEarlyCheckout: true,
         afterHoursMinutes: true,
         totalMinutes: true,
         overtimeMinutes: true,
@@ -321,43 +330,62 @@ export class AttendanceService {
       gracePeriodMinutes: attendance.gracePeriodMinutesSnapshot ?? 0,
     });
 
-    const updated = await this.prisma.attendance.update({
-      where: { id: attendance.id },
-      data: {
-        checkOutAt: now,
-        checkOutLatitude,
-        checkOutLongitude,
-        checkOutAccuracyMeters,
-        checkOutDistanceMeters,
-        isLate: metrics.isLate,
-        lateMinutes: metrics.lateMinutes,
-        earlyMinutes: metrics.earlyMinutes,
-        afterHoursMinutes: metrics.afterHoursMinutes,
-        totalMinutes: metrics.totalMinutes,
-        overtimeMinutes: metrics.overtimeMinutes,
-        status: AttendanceStatus.COMPLETED,
-      },
-      select: {
-        id: true,
-        workDate: true,
-        status: true,
-        source: true,
-        checkInAt: true,
-        checkOutAt: true,
-        isLate: true,
-        lateMinutes: true,
-        earlyMinutes: true,
-        afterHoursMinutes: true,
-        totalMinutes: true,
-        overtimeMinutes: true,
-        scheduledMinutes: true,
-        workModeSnapshot: true,
-        checkInLatitude: true,
-        checkInLongitude: true,
-        checkOutLatitude: true,
-        checkOutLongitude: true,
-      },
-    });
+    const updated = await this.prisma
+      .$transaction(
+        async (tx) => {
+          const record = await tx.attendance.update({
+            where: { id: attendance.id, checkOutAt: null },
+            data: {
+              checkOutAt: now,
+              checkOutLatitude,
+              checkOutLongitude,
+              checkOutAccuracyMeters,
+              checkOutDistanceMeters,
+              isLate: metrics.isLate,
+              lateMinutes: metrics.lateMinutes,
+              earlyMinutes: metrics.earlyMinutes,
+              earlyCheckoutMinutes: metrics.earlyCheckoutMinutes,
+              isEarlyCheckout: metrics.isEarlyCheckout,
+              afterHoursMinutes: metrics.afterHoursMinutes,
+              totalMinutes: metrics.totalMinutes,
+              overtimeMinutes: metrics.overtimeMinutes,
+              status: AttendanceStatus.COMPLETED,
+            },
+            select: {
+              id: true,
+              workDate: true,
+              status: true,
+              source: true,
+              checkInAt: true,
+              checkOutAt: true,
+              isLate: true,
+              lateMinutes: true,
+              earlyMinutes: true,
+              earlyCheckoutMinutes: true,
+              isEarlyCheckout: true,
+              afterHoursMinutes: true,
+              totalMinutes: true,
+              overtimeMinutes: true,
+              scheduledMinutes: true,
+              workModeSnapshot: true,
+              checkInLatitude: true,
+              checkInLongitude: true,
+              checkOutLatitude: true,
+              checkOutLongitude: true,
+            },
+          });
+          if (metrics.isEarlyCheckout)
+            await this.notifications.createForActiveAdmins(tx, {
+              type: NotificationType.ATTENDANCE_EARLY_CHECKOUT,
+              actorUserId: userId,
+              attendanceId: attendance.id,
+              eventId: `attendance:${attendance.id}:early-checkout`,
+            });
+          return record;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      )
+      .catch(rethrowConcurrentMutation);
 
     return {
       success: true,
@@ -401,6 +429,8 @@ export class AttendanceService {
         isLate: true,
         lateMinutes: true,
         earlyMinutes: true,
+        earlyCheckoutMinutes: true,
+        isEarlyCheckout: true,
         afterHoursMinutes: true,
         totalMinutes: true,
         overtimeMinutes: true,
@@ -488,6 +518,8 @@ export class AttendanceService {
         isLate: true,
         lateMinutes: true,
         earlyMinutes: true,
+        earlyCheckoutMinutes: true,
+        isEarlyCheckout: true,
         afterHoursMinutes: true,
         totalMinutes: true,
         overtimeMinutes: true,
@@ -545,6 +577,8 @@ export class AttendanceService {
         isLate: true,
         lateMinutes: true,
         earlyMinutes: true,
+        earlyCheckoutMinutes: true,
+        isEarlyCheckout: true,
         afterHoursMinutes: true,
         totalMinutes: true,
         overtimeMinutes: true,
@@ -667,6 +701,8 @@ export class AttendanceService {
         isLate: true,
         lateMinutes: true,
         earlyMinutes: true,
+        earlyCheckoutMinutes: true,
+        isEarlyCheckout: true,
         afterHoursMinutes: true,
         totalMinutes: true,
         overtimeMinutes: true,
@@ -765,6 +801,8 @@ export class AttendanceService {
           isLate: false,
           lateMinutes: 0,
           earlyMinutes: 0,
+          earlyCheckoutMinutes: 0,
+          isEarlyCheckout: false,
           afterHoursMinutes: 0,
           totalMinutes: null,
           overtimeMinutes: null,
@@ -792,6 +830,8 @@ export class AttendanceService {
           isLate: metrics.isLate,
           lateMinutes: metrics.lateMinutes,
           earlyMinutes: metrics.earlyMinutes,
+          earlyCheckoutMinutes: metrics.earlyCheckoutMinutes,
+          isEarlyCheckout: metrics.isEarlyCheckout,
           afterHoursMinutes: metrics.afterHoursMinutes,
           totalMinutes: metrics.totalMinutes,
           overtimeMinutes: metrics.overtimeMinutes,
@@ -806,6 +846,8 @@ export class AttendanceService {
           isLate: true,
           lateMinutes: true,
           earlyMinutes: true,
+          earlyCheckoutMinutes: true,
+          isEarlyCheckout: true,
           afterHoursMinutes: true,
           totalMinutes: true,
           overtimeMinutes: true,
@@ -983,6 +1025,8 @@ export class AttendanceService {
           isLate: metrics.isLate,
           lateMinutes: metrics.lateMinutes,
           earlyMinutes: metrics.earlyMinutes,
+          earlyCheckoutMinutes: metrics.earlyCheckoutMinutes,
+          isEarlyCheckout: metrics.isEarlyCheckout,
           afterHoursMinutes: metrics.afterHoursMinutes,
           totalMinutes: metrics.totalMinutes,
           overtimeMinutes: metrics.overtimeMinutes,
@@ -1001,6 +1045,8 @@ export class AttendanceService {
           isLate: true,
           lateMinutes: true,
           earlyMinutes: true,
+          earlyCheckoutMinutes: true,
+          isEarlyCheckout: true,
           afterHoursMinutes: true,
           totalMinutes: true,
           overtimeMinutes: true,

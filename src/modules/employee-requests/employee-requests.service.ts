@@ -1,3 +1,8 @@
+import { randomUUID } from 'node:crypto';
+import {
+  validateRequestImage,
+  MAX_REQUEST_ATTACHMENTS,
+} from './request-attachment.util';
 import { rethrowConcurrentMutation } from '../notifications/concurrent-mutation';
 import {
   BadRequestException,
@@ -26,6 +31,17 @@ import { UpdateAdminNoteDto } from './dto/update-admin-note.dto';
 import { UpdateRequestStatusDto } from './dto/update-request-status.dto';
 
 const requestInclude = {
+  requestCategory: true,
+  resource: { select: { id: true, name: true } },
+  attachments: {
+    select: {
+      id: true,
+      originalFileName: true,
+      mimeType: true,
+      fileSize: true,
+      createdAt: true,
+    },
+  },
   employee: {
     select: {
       id: true,
@@ -74,8 +90,45 @@ export class EmployeeRequestsService {
     private readonly storageService: StorageService,
   ) {}
 
-  async create(userId: string, dto: CreateEmployeeRequestDto) {
+  async create(
+    userId: string,
+    dto: CreateEmployeeRequestDto,
+    files: Express.Multer.File[] = [],
+  ) {
     const employee = await this.getEmployee(userId);
+    if (files.length > MAX_REQUEST_ATTACHMENTS)
+      throw new BadRequestException('At most 10 bill photos are allowed.');
+    const extensions = files.map(validateRequestImage);
+    if (!dto.requestCategoryId && !dto.category)
+      throw new BadRequestException(
+        'requestCategoryId or category is required.',
+      );
+    const managedCategory = dto.requestCategoryId
+      ? await this.prisma.requestCategory.findUnique({
+          where: { id: dto.requestCategoryId },
+        })
+      : await this.prisma.requestCategory.findUnique({
+          where: { legacyCategory: dto.category! },
+        });
+    if (!managedCategory || !managedCategory.isActive)
+      throw new BadRequestException('Request category is missing or inactive.');
+    const category =
+      managedCategory.legacyCategory ?? EmployeeRequestCategory.OTHER;
+    if (dto.requestCategoryId && dto.category && dto.category !== category)
+      throw new BadRequestException(
+        'category and requestCategoryId do not match.',
+      );
+    if (dto.resourceId) {
+      if (!dto.resourceQuantity)
+        throw new BadRequestException('resourceQuantity is required.');
+      const resource = await this.prisma.resource.findFirst({
+        where: { id: dto.resourceId, isActive: true },
+      });
+      if (!resource) throw new NotFoundException('Active resource not found.');
+    } else if (dto.resourceQuantity !== undefined)
+      throw new BadRequestException(
+        'resourceId is required with resourceQuantity.',
+      );
     const subject = dto.subject.trim();
     const description = dto.description.trim();
 
@@ -140,7 +193,7 @@ export class EmployeeRequestsService {
     }
 
     if (
-      dto.category === EmployeeRequestCategory.ATTENDANCE_CORRECTION &&
+      category === EmployeeRequestCategory.ATTENDANCE_CORRECTION &&
       !dto.attendanceId
     ) {
       throw new BadRequestException(
@@ -148,7 +201,7 @@ export class EmployeeRequestsService {
       );
     }
     if (
-      dto.category !== EmployeeRequestCategory.ATTENDANCE_CORRECTION &&
+      category !== EmployeeRequestCategory.ATTENDANCE_CORRECTION &&
       dto.attendanceId
     ) {
       throw new BadRequestException(
@@ -181,12 +234,62 @@ export class EmployeeRequestsService {
         );
     }
 
+    const uploaded: {
+      bucket: string;
+      storagePath: string;
+      originalFileName: string;
+      mimeType: string;
+      fileSize: number;
+    }[] = [];
+    const cleanup = async () => {
+      await Promise.allSettled(
+        uploaded.map((file) =>
+          this.storageService.deleteFile(file.storagePath, file.bucket),
+        ),
+      );
+    };
+    try {
+      for (let index = 0; index < files.length; index++) {
+        const file = files[index];
+        const stored = await this.storageService.uploadFile({
+          storagePath: `employees/${employee.id}/requests/${randomUUID()}.${extensions[index]}`,
+          file: file.buffer,
+          contentType: file.mimetype,
+        });
+        uploaded.push({
+          ...stored,
+          originalFileName: file.originalname.slice(0, 255),
+          mimeType: file.mimetype,
+          fileSize: file.size,
+        });
+      }
+    } catch (error) {
+      await cleanup();
+      throw error;
+    }
     const request = await this.prisma
       .$transaction(async (tx) => {
+        if (
+          !(await tx.requestCategory.findFirst({
+            where: { id: managedCategory.id, isActive: true },
+          }))
+        )
+          throw new BadRequestException('Request category is inactive.');
+        if (
+          dto.resourceId &&
+          !(await tx.resource.findFirst({
+            where: { id: dto.resourceId, isActive: true },
+          }))
+        )
+          throw new BadRequestException('Resource is inactive.');
         const created = await tx.employeeRequest.create({
           data: {
             employeeId: employee.id,
-            category: dto.category,
+            category,
+            requestCategoryId: managedCategory.id,
+            resourceId: dto.resourceId,
+            resourceQuantity: dto.resourceQuantity,
+            attachments: { create: uploaded },
             subject,
             description,
             priority: dto.priority,
@@ -212,7 +315,10 @@ export class EmployeeRequestsService {
         });
         return created;
       })
-      .catch(rethrowConcurrentMutation);
+      .catch(async (error: unknown) => {
+        await cleanup();
+        rethrowConcurrentMutation(error);
+      });
 
     return {
       success: true,
@@ -661,6 +767,10 @@ export class EmployeeRequestsService {
       }),
       ...(query.assignedAdminId && { assignedAdminId: query.assignedAdminId }),
       ...(query.category && { category: query.category }),
+      ...(query.requestCategoryId && {
+        requestCategoryId: query.requestCategoryId,
+      }),
+      ...(query.resourceId && { resourceId: query.resourceId }),
       ...(!ignoreStatus && query.status && { status: query.status }),
       ...(query.priority && { priority: query.priority }),
       ...(createdAt && { createdAt }),

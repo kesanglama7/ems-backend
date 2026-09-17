@@ -1,7 +1,6 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 
 import {
-  ApiCookieAuth,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,

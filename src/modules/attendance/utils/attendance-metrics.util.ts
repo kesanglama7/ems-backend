@@ -2,6 +2,8 @@ export interface AttendanceMetrics {
   isLate: boolean;
   lateMinutes: number;
   earlyMinutes: number;
+  earlyCheckoutMinutes: number;
+  isEarlyCheckout: boolean;
   afterHoursMinutes: number;
   totalMinutes: number | null;
   overtimeMinutes: number | null;
@@ -73,6 +75,13 @@ export function calculateAttendanceMetrics(
     isLate,
     lateMinutes,
     earlyMinutes,
+    isEarlyCheckout: !!checkOutAt && checkOutAt < scheduledEndAt,
+    earlyCheckoutMinutes: checkOutAt
+      ? Math.max(
+          0,
+          Math.ceil((scheduledEndAt.getTime() - checkOutAt.getTime()) / 60000),
+        )
+      : 0,
     afterHoursMinutes,
     totalMinutes,
     overtimeMinutes,

@@ -217,7 +217,8 @@ export class NotificationDispatcherService implements OnApplicationBootstrap {
         select: { status: true, expiresAt: true },
       });
       return Boolean(
-        announcement && announcement.status === 'PUBLISHED' &&
+        announcement &&
+        announcement.status === 'PUBLISHED' &&
         (!announcement.expiresAt || announcement.expiresAt > new Date()),
       );
     }

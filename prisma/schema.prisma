@@ -31,6 +31,17 @@ enum DocumentStatus {
   REJECTED
 }
 
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum LeaveAudience {
+  ALL
+  SELECTED
+}
+
 enum EmployeeWorkMode {
   ON_FIELD
   REMOTE
@@ -191,6 +202,12 @@ model Employee {
 
   workMode EmployeeWorkMode @default(ON_FIELD)
 
+  dateOfBirth DateTime? @db.Date
+  gender Gender?
+  birthdayDismissedYear Int?
+  leaveAssignments LeaveTypeAssignment[]
+  resourceAssignments ResourceAssignment[]
+
   dateOfJoining DateTime?
 
   profileImagePath String?
@@ -308,6 +325,8 @@ model Attendance {
   isLate            Boolean @default(false)
   lateMinutes       Int     @default(0)
   earlyMinutes      Int     @default(0)
+  earlyCheckoutMinutes Int @default(0)
+  isEarlyCheckout Boolean @default(false)
   afterHoursMinutes Int     @default(0)
   totalMinutes      Int?
   overtimeMinutes   Int?
@@ -352,6 +371,10 @@ model LeaveType {
   description String?
 
   isActive Boolean @default(true)
+
+  audience LeaveAudience @default(ALL)
+  eligibleGender Gender?
+  assignments LeaveTypeAssignment[]
 
   yearlyAllowance       Decimal @default(0) @db.Decimal(6, 2)
   hasLimitedBalance     Boolean @default(false)
@@ -457,6 +480,7 @@ model PushDeviceToken {
 }
 
 enum NotificationCategory {
+  RESOURCE
   LEAVE
   REQUEST
   DOCUMENT
@@ -483,11 +507,16 @@ enum NotificationType {
   DOCUMENT_VERIFIED
   DOCUMENT_REJECTED
   DOCUMENT_DELETED
+  ATTENDANCE_EARLY_CHECKOUT
+  RESOURCE_RETURN_REQUESTED
+  RESOURCE_ASSIGNED
+  RESOURCE_RETURNED
   ATTENDANCE_CREATED_BY_ADMIN
   ATTENDANCE_UPDATED_BY_ADMIN
 }
 
 enum NotificationEntityType {
+  RESOURCE_ASSIGNMENT
   ANNOUNCEMENT
   LEAVE_REQUEST
   EMPLOYEE_REQUEST
@@ -618,6 +647,13 @@ model EmployeeRequest {
   employeeId String
   employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
+  requestCategoryId String?
+  requestCategory RequestCategory? @relation(fields: [requestCategoryId], references: [id], onDelete: Restrict)
+  attachments RequestAttachment[]
+  resourceId String?
+  resource Resource? @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+  resourceQuantity Int?
+
   category    EmployeeRequestCategory
   subject     String
   description String
@@ -671,4 +707,83 @@ model EmployeeRequestActivity {
 
   @@index([requestId, createdAt])
   @@index([performedByUserId])
+}
+
+model LeaveTypeAssignment {
+  employeeId String
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId String
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  assignedByUserId String
+  createdAt DateTime @default(now())
+  @@id([employeeId, leaveTypeId])
+}
+
+model OfficeHoliday {
+  id String @id @default(uuid())
+  name String @db.VarChar(160)
+  date DateTime @unique @db.Date
+  description String? @db.VarChar(1000)
+  isOfficeClosed Boolean @default(true)
+  createdByUserId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RequestCategory {
+  id String @id @default(uuid())
+  name String @unique @db.VarChar(100)
+  description String? @db.VarChar(500)
+  isActive Boolean @default(true)
+  legacyCategory EmployeeRequestCategory? @unique
+  requests EmployeeRequest[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RequestAttachment {
+  id String @id @default(uuid())
+  requestId String
+  request EmployeeRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  originalFileName String
+  mimeType String
+  fileSize Int
+  bucket String
+  storagePath String @unique
+  createdAt DateTime @default(now())
+  @@index([requestId])
+}
+
+model Resource {
+  id String @id @default(uuid())
+  name String @unique @db.VarChar(160)
+  description String? @db.VarChar(1000)
+  totalQuantity Int
+  availableQuantity Int
+  isActive Boolean @default(true)
+  assignments ResourceAssignment[]
+  requests EmployeeRequest[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ResourceAssignment {
+  id String @id @default(uuid())
+  resourceId String
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+  employeeId String
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  quantity Int
+  assetTag String? @db.VarChar(100)
+  note String? @db.VarChar(1000)
+  assignedByUserId String
+  assignedAt DateTime @default(now())
+  returnRequestedAt DateTime?
+  returnRequestedByUserId String?
+  returnRequestNote String? @db.VarChar(1000)
+  returnedAt DateTime?
+  returnedByUserId String?
+  updatedAt DateTime @updatedAt
+  @@index([employeeId, returnedAt])
+  @@index([resourceId, returnedAt])
 }

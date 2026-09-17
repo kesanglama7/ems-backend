@@ -6,4 +6,3 @@ export class AssignRequestDto {
   @IsUUID()
   adminUserId!: string;
 }
-

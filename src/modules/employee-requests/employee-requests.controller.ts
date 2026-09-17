@@ -1,4 +1,17 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { ApiBody, ApiConsumes } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { ApiAuth } from '../../common/decorators/api-auth.decorator';
@@ -20,9 +33,42 @@ export class EmployeeRequestsController {
   constructor(private readonly service: EmployeeRequestsService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Submit an employee request' })
-  create(@CurrentUser() user: RequestUser, @Body() dto: CreateEmployeeRequestDto) {
-    return this.service.create(user.id, dto);
+  @UseInterceptors(
+    FilesInterceptor('attachments', 10, {
+      limits: { fileSize: 5 * 1024 * 1024, files: 10, fields: 20 },
+    }),
+  )
+  @ApiConsumes('application/json', 'multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['subject', 'description'],
+      properties: {
+        subject: { type: 'string' },
+        description: { type: 'string' },
+        requestCategoryId: { type: 'string', format: 'uuid' },
+        category: { type: 'string' },
+        priority: { type: 'string' },
+        attendanceId: { type: 'string', format: 'uuid' },
+        resourceId: { type: 'string', format: 'uuid' },
+        resourceQuantity: { type: 'integer' },
+        attachments: {
+          type: 'array',
+          maxItems: 10,
+          items: { type: 'string', format: 'binary' },
+        },
+      },
+    },
+  })
+  @ApiOperation({
+    summary: 'Submit an employee request with optional bill photos',
+  })
+  create(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: CreateEmployeeRequestDto,
+    @UploadedFiles() files?: Express.Multer.File[],
+  ) {
+    return this.service.create(user.id, dto, files);
   }
 
   @Get('mine')
@@ -33,13 +79,19 @@ export class EmployeeRequestsController {
 
   @Get(':requestId')
   @ApiOperation({ summary: 'Get my request with activity history' })
-  findOne(@CurrentUser() user: RequestUser, @Param('requestId', ParseUUIDPipe) id: string) {
+  findOne(
+    @CurrentUser() user: RequestUser,
+    @Param('requestId', ParseUUIDPipe) id: string,
+  ) {
     return this.service.findOne(user.id, Role.EMPLOYEE, id);
   }
 
   @Patch(':requestId/cancel')
   @ApiOperation({ summary: 'Cancel an open request' })
-  cancel(@CurrentUser() user: RequestUser, @Param('requestId', ParseUUIDPipe) id: string) {
+  cancel(
+    @CurrentUser() user: RequestUser,
+    @Param('requestId', ParseUUIDPipe) id: string,
+  ) {
     return this.service.cancel(user.id, id);
   }
 }

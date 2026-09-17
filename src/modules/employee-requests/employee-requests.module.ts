@@ -1,3 +1,5 @@
+import { RequestCategoriesController } from './request-categories.controller';
+import { RequestAttachmentsController } from './request-attachments.controller';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
@@ -8,7 +10,12 @@ import { StorageModule } from '../storage/storage.module';
 
 @Module({
   imports: [NotificationsModule, AuthModule, StorageModule],
-  controllers: [EmployeeRequestsController, AdminEmployeeRequestsController],
+  controllers: [
+    RequestCategoriesController,
+    RequestAttachmentsController,
+    EmployeeRequestsController,
+    AdminEmployeeRequestsController,
+  ],
   providers: [EmployeeRequestsService],
 })
 export class EmployeeRequestsModule {}

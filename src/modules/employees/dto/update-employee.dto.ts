@@ -11,6 +11,8 @@ import {
 import { CreateEmployeeDto } from './create-employee.dto';
 
 class UpdateEmployeeFieldsDto extends PickType(CreateEmployeeDto, [
+  'dateOfBirth',
+  'gender',
   'firstName',
   'lastName',
   'phone',

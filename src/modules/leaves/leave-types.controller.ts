@@ -1,3 +1,4 @@
+import { AssignLeaveTypeDto } from './dto/assign-leave-type.dto';
 import {
   Body,
   Controller,
@@ -41,6 +42,38 @@ import { ApiAuth } from '../../common/decorators/api-auth.decorator';
 export class LeaveTypesController {
   constructor(private readonly leaveTypesService: LeaveTypesService) {}
 
+  @Post(':id/assignments')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiOperation({
+    summary:
+      'Assign a restricted leave type to an employee and initialize balance',
+  })
+  assign(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AssignLeaveTypeDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.leaveTypesService.assign(id, dto.employeeId, user.id);
+  }
+
+  @Get(':id/assignments')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN)
+  assignments(@Param('id', ParseUUIDPipe) id: string) {
+    return this.leaveTypesService.assignments(id);
+  }
+
+  @Delete(':id/assignments/:employeeId')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN)
+  unassign(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+  ) {
+    return this.leaveTypesService.unassign(id, employeeId);
+  }
+
   @Post()
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
@@ -82,7 +115,7 @@ export class LeaveTypesController {
     @CurrentUser()
     user: RequestUser,
   ) {
-    return this.leaveTypesService.findAll(user.role);
+    return this.leaveTypesService.findAll(user.role, user.id);
   }
 
   @Patch(':id')

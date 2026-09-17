@@ -1,3 +1,8 @@
+import {
+  assertLeaveEligible,
+  eligibleLeaveWhere,
+  initializeEmployeeBalances,
+} from './leave-eligibility';
 import { NotificationType } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
@@ -25,6 +30,7 @@ export class LeaveBalanceService {
     year: number,
     allowance: Prisma.Decimal,
   ) {
+    await assertLeaveEligible(client, employeeId, leaveTypeId);
     return client.employeeLeaveBalance.upsert({
       where: { employeeId_leaveTypeId_year: { employeeId, leaveTypeId, year } },
       update: {},
@@ -51,16 +57,26 @@ export class LeaveBalanceService {
   }
 
   async getEmployeeBalances(employeeId: string, year: number) {
+    await initializeEmployeeBalances(this.prisma, employeeId, year);
+    const employee = await this.prisma.employee.findUniqueOrThrow({
+      where: { id: employeeId },
+    });
     const types = await this.prisma.leaveType.findMany({
-      where: { isActive: true, isEmployeeRequestable: true },
+      where: {
+        isActive: true,
+        ...eligibleLeaveWhere(employeeId, employee.gender),
+      },
       orderBy: { name: 'asc' },
     });
     const rows = await this.prisma.employeeLeaveBalance.findMany({
       where: { employeeId, year },
     });
     return types.map((type) => {
+      const row = rows.find((item) => item.leaveTypeId === type.id);
       if (!type.hasLimitedBalance)
         return {
+          id: row?.id,
+          leaveType: type,
           leaveTypeId: type.id,
           name: type.name,
           year,
@@ -70,11 +86,12 @@ export class LeaveBalanceService {
           pendingDays: null,
           remainingDays: null,
         };
-      const row = rows.find((item) => item.leaveTypeId === type.id);
       const totalDays = Number(row?.totalDays ?? type.yearlyAllowance);
       const usedDays = Number(row?.usedDays ?? 0);
       const pendingDays = Number(row?.pendingDays ?? 0);
       return {
+        id: row?.id,
+        leaveType: type,
         leaveTypeId: type.id,
         name: type.name,
         year,
@@ -148,13 +165,6 @@ export class LeaveBalanceService {
       user: {
         is: {
           status: UserStatus.ACTIVE,
-        },
-      },
-
-      // Only employees with balance records for this year
-      leaveBalances: {
-        some: {
-          year,
         },
       },
 
@@ -288,23 +298,13 @@ export class LeaveBalanceService {
           profileImageUrl,
           department: employee.department,
 
-          balances: employee.leaveBalances.map((balance) => {
-            const totalDays = Number(balance.totalDays);
-
-            const usedDays = Number(balance.usedDays);
-
-            const pendingDays = Number(balance.pendingDays);
-
-            return {
-              id: balance.id,
-              year: balance.year,
+          balances: (await this.getEmployeeBalances(employee.id, year)).map(
+            (balance) => ({
+              ...balance,
+              availableDays: balance.remainingDays,
               leaveType: balance.leaveType,
-              totalDays,
-              usedDays,
-              pendingDays,
-              availableDays: Math.max(totalDays - usedDays - pendingDays, 0),
-            };
-          }),
+            }),
+          ),
         };
       }),
     );
@@ -331,31 +331,15 @@ export class LeaveBalanceService {
   }
 
   async initialize(year: number) {
-    const [employees, types] = await Promise.all([
-      this.prisma.employee.findMany({
-        where: { user: { status: UserStatus.ACTIVE } },
-        select: { id: true },
-      }),
-      this.prisma.leaveType.findMany({
-        where: { isActive: true, hasLimitedBalance: true },
-      }),
-    ]);
+    const employees = await this.prisma.employee.findMany({
+      where: { user: { status: UserStatus.ACTIVE } },
+      select: { id: true },
+    });
     let created = 0;
     for (const employee of employees)
-      for (const type of types) {
-        const result = await this.prisma.employeeLeaveBalance.createMany({
-          data: [
-            {
-              employeeId: employee.id,
-              leaveTypeId: type.id,
-              year,
-              totalDays: type.yearlyAllowance,
-            },
-          ],
-          skipDuplicates: true,
-        });
-        created += result.count;
-      }
+      created += (
+        await initializeEmployeeBalances(this.prisma, employee.id, year)
+      ).count;
     return {
       success: true,
       message: 'Leave balances initialized.',

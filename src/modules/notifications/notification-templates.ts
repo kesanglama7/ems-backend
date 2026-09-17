@@ -2,6 +2,22 @@ import { EmployeeRequestStatus, NotificationType } from '@prisma/client';
 
 // Keep request descriptions, document URLs, private notes and rejection reasons out of push payloads.
 const templates: Record<NotificationType, [string, string]> = {
+  ATTENDANCE_EARLY_CHECKOUT: [
+    'Employee checked out early',
+    'An employee left before the scheduled end time. Open attendance to view the employee and details.',
+  ],
+  RESOURCE_RETURN_REQUESTED: [
+    'Resource return requested',
+    'A resource return has been requested. Open the assignment for details.',
+  ],
+  RESOURCE_ASSIGNED: [
+    'Office resource assigned',
+    'An office resource has been assigned to you.',
+  ],
+  RESOURCE_RETURNED: [
+    'Resource returned',
+    'An administrator confirmed the return of an office resource.',
+  ],
   ANNOUNCEMENT_PUBLISHED: [
     'Company announcement',
     'A new company announcement is available. Open it to read the details.',

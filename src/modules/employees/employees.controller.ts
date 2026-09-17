@@ -17,7 +17,6 @@ import {
   ApiBody,
   ApiConflictResponse,
   ApiConsumes,
-  ApiCookieAuth,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,

@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { ApiAuth } from '../../common/decorators/api-auth.decorator';
@@ -36,7 +45,10 @@ export class AdminEmployeeRequestsController {
 
   @Get(':requestId')
   @ApiOperation({ summary: 'Get an employee request with activity history' })
-  findOne(@CurrentUser() user: RequestUser, @Param('requestId', ParseUUIDPipe) id: string) {
+  findOne(
+    @CurrentUser() user: RequestUser,
+    @Param('requestId', ParseUUIDPipe) id: string,
+  ) {
     return this.service.findOne(user.id, Role.ADMIN, id);
   }
 
@@ -72,7 +84,11 @@ export class AdminEmployeeRequestsController {
 
   @Patch(':requestId/status')
   @ApiOperation({ summary: 'Update request status' })
-  updateStatus(@CurrentUser() user: RequestUser, @Param('requestId', ParseUUIDPipe) id: string, @Body() dto: UpdateRequestStatusDto) {
+  updateStatus(
+    @CurrentUser() user: RequestUser,
+    @Param('requestId', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateRequestStatusDto,
+  ) {
     return this.service.updateStatus(id, user.id, dto);
   }
 }

@@ -1,3 +1,4 @@
+import { assertLeaveEligible } from './leave-eligibility';
 import { rethrowConcurrentMutation } from '../notifications/concurrent-mutation';
 import {
   BadRequestException,
@@ -53,6 +54,7 @@ export class LeavesService {
   async preview(userId: string, dto: CreateLeaveRequestDto) {
     const employee = await this.employeeForUser(userId);
     const type = await this.getType(dto.leaveTypeId, true);
+    await assertLeaveEligible(this.prisma, employee.id, type.id);
     const calculated = await this.calculation.calculate(
       dto.startDate,
       dto.endDate,
@@ -106,6 +108,7 @@ export class LeavesService {
   async createLeaveRequest(userId: string, dto: CreateLeaveRequestDto) {
     const employee = await this.employeeForUser(userId);
     const type = await this.getType(dto.leaveTypeId, true);
+    await assertLeaveEligible(this.prisma, employee.id, type.id);
     const calculated = await this.calculation.calculate(
       dto.startDate,
       dto.endDate,
@@ -125,6 +128,24 @@ export class LeavesService {
     const leave = await this.prisma
       .$transaction(
         async (tx) => {
+          await assertLeaveEligible(tx, employee.id, type.id);
+          const currentCalculation = await this.calculation.calculate(
+            dto.startDate,
+            dto.endDate,
+            dto.duration,
+            tx,
+          );
+          if (currentCalculation.requestedDays !== calculated.requestedDays)
+            throw new BadRequestException(
+              'The office calendar changed. Preview the leave request again.',
+            );
+          await this.assertNoOverlap(
+            employee.id,
+            calculated.startDate,
+            calculated.endDate,
+            dto.duration,
+            tx,
+          );
           if (type.hasLimitedBalance) {
             const balance = await this.balances.ensure(
               tx,
@@ -284,19 +305,67 @@ export class LeavesService {
       include: { leaveType: true, employee: { select: { userId: true } } },
     });
     if (!request) throw new NotFoundException('Leave request not found.');
-    if (request.status !== LeaveStatus.PENDING)
+    if (
+      request.status !== LeaveStatus.PENDING &&
+      request.status !== LeaveStatus.AUTO_REJECTED
+    )
       throw new BadRequestException(
-        'Only pending leave requests can be approved.',
+        'Only pending or automatically rejected leave requests can be approved.',
+      );
+    if (request.status === LeaveStatus.AUTO_REJECTED && !dto.note?.trim())
+      throw new BadRequestException(
+        'A review note is required when approving automatically rejected leave.',
       );
     const data = await this.prisma
       .$transaction(
         async (tx) => {
-          if (request.leaveType.hasLimitedBalance)
-            await this.movePending(tx, request, true);
+          await assertLeaveEligible(
+            tx,
+            request.employeeId,
+            request.leaveTypeId,
+          );
+          await this.assertNoOverlap(
+            request.employeeId,
+            request.startDate,
+            request.endDate,
+            request.duration,
+            tx,
+            leaveId,
+          );
+          const approvedDays =
+            request.status === LeaveStatus.AUTO_REJECTED
+              ? (
+                  await this.calculation.calculate(
+                    request.startDate.toISOString().slice(0, 10),
+                    request.endDate.toISOString().slice(0, 10),
+                    request.duration,
+                    tx,
+                  )
+                ).requestedDays
+              : Number(request.requestedDays);
+          if (request.leaveType.hasLimitedBalance) {
+            if (request.status === LeaveStatus.PENDING)
+              await this.movePending(tx, request, true);
+            else {
+              const balance = await this.balances.ensure(
+                tx,
+                request.employeeId,
+                request.leaveTypeId,
+                request.startDate.getUTCFullYear(),
+                request.leaveType.yearlyAllowance,
+              );
+              this.balances.assertAvailable(balance, approvedDays);
+              await tx.employeeLeaveBalance.update({
+                where: { id: balance.id },
+                data: { usedDays: { increment: approvedDays } },
+              });
+            }
+          }
           const updated = await tx.leaveRequest.update({
-            where: { id: leaveId, status: 'PENDING' },
+            where: { id: leaveId, status: request.status },
             data: {
               status: LeaveStatus.APPROVED,
+              requestedDays: approvedDays,
               reviewedByUserId: adminUserId,
               reviewedAt: new Date(),
               reviewNote: dto.note?.trim() ?? null,
@@ -354,6 +423,7 @@ export class LeavesService {
     });
     if (!employee) throw new NotFoundException('Employee not found.');
     const type = await this.getType(dto.leaveTypeId, false);
+    await assertLeaveEligible(this.prisma, employee.id, type.id);
     const calculated = await this.calculation.calculate(
       dto.startDate,
       dto.endDate,
@@ -371,6 +441,24 @@ export class LeavesService {
     const data = await this.prisma
       .$transaction(
         async (tx) => {
+          await assertLeaveEligible(tx, employee.id, type.id);
+          const currentCalculation = await this.calculation.calculate(
+            dto.startDate,
+            dto.endDate,
+            dto.duration,
+            tx,
+          );
+          if (currentCalculation.requestedDays !== calculated.requestedDays)
+            throw new BadRequestException(
+              'The office calendar changed. Preview the leave request again.',
+            );
+          await this.assertNoOverlap(
+            employee.id,
+            calculated.startDate,
+            calculated.endDate,
+            dto.duration,
+            tx,
+          );
           if (type.hasLimitedBalance) {
             const balance = await this.balances.ensure(
               tx,
@@ -578,10 +666,13 @@ export class LeavesService {
     startDate: Date,
     endDate: Date,
     duration: LeaveDuration,
+    client: Prisma.TransactionClient = this.prisma,
+    excludeId?: string,
   ) {
-    const requests = await this.prisma.leaveRequest.findMany({
+    const requests = await client.leaveRequest.findMany({
       where: {
         employeeId,
+        ...(excludeId && { id: { not: excludeId } }),
         status: { in: [LeaveStatus.PENDING, LeaveStatus.APPROVED] },
         startDate: { lte: endDate },
         endDate: { gte: startDate },

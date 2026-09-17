@@ -1,3 +1,4 @@
+import { initializeEmployeeBalances } from '../leaves/leave-eligibility';
 ///<reference types="multer" />
 import {
   BadRequestException,
@@ -31,6 +32,20 @@ export class EmployeesService {
     private readonly prisma: PrismaService,
     private readonly storageService: StorageService,
   ) {}
+
+  private validateBirthDate(value?: string | null) {
+    if (value == null) return;
+    const date = new Date(value);
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+      Number.isNaN(date.getTime()) ||
+      date.toISOString().slice(0, 10) !== value ||
+      date > new Date()
+    )
+      throw new BadRequestException(
+        'dateOfBirth must be a valid past or present date in YYYY-MM-DD format.',
+      );
+  }
 
   private async uploadProfileImage(
     employeeId: string,
@@ -119,6 +134,7 @@ export class EmployeesService {
 
   //create: employee
   async create(dto: CreateEmployeeDto) {
+    this.validateBirthDate(dto.dateOfBirth);
     const email = dto.email.trim().toLowerCase();
     const existingUser = await this.prisma.user.findUnique({
       where: {
@@ -213,6 +229,8 @@ export class EmployeesService {
                 phone: dto.phone?.trim() || null,
                 jobTitle: dto.jobTitle?.trim() || null,
                 dateOfJoining,
+                dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : null,
+                gender: dto.gender,
                 workMode: dto.workMode ?? EmployeeWorkMode.ON_FIELD,
                 departmentId: dto.departmentId ?? null,
                 userId: user.id,
@@ -228,6 +246,7 @@ export class EmployeesService {
               },
             });
 
+            await initializeEmployeeBalances(tx, employee.id);
             return {
               user,
               employee,
@@ -457,6 +476,7 @@ export class EmployeesService {
         }
 
         const { profileImagePath, ...employeeData } = employee;
+        void profileImagePath;
 
         return {
           ...employeeData,
@@ -522,6 +542,7 @@ export class EmployeesService {
     }
 
     const { profileImagePath, ...employeeData } = employee;
+    void profileImagePath;
 
     return {
       success: true,
@@ -534,6 +555,7 @@ export class EmployeesService {
 
   //Patch: id
   async update(employeeId: string, dto: UpdateEmployeeDto) {
+    this.validateBirthDate(dto.dateOfBirth);
     const employee = await this.prisma.employee.findUnique({
       where: {
         id: employeeId,
@@ -569,61 +591,72 @@ export class EmployeesService {
       }
     }
 
-    const updatedEmployee = await this.prisma.employee.update({
-      where: {
-        id: employeeId,
-      },
-
-      data: {
-        ...(dto.firstName !== undefined && {
-          firstName: dto.firstName.trim(),
-        }),
-
-        ...(dto.lastName !== undefined && {
-          lastName: dto.lastName.trim(),
-        }),
-
-        ...(dto.phone !== undefined && {
-          phone: dto.phone.trim() || null,
-        }),
-
-        ...(dto.jobTitle !== undefined && {
-          jobTitle: dto.jobTitle.trim() || null,
-        }),
-
-        ...(dto.departmentId !== undefined && {
-          departmentId: dto.departmentId,
-        }),
-
-        ...(dto.dateOfJoining !== undefined && {
-          dateOfJoining:
-            dto.dateOfJoining === null ? null : new Date(dto.dateOfJoining),
-        }),
-
-        ...(dto.workMode !== undefined && {
-          workMode: dto.workMode,
-        }),
-      },
-
-      include: {
-        department: {
-          select: {
-            id: true,
-            name: true,
-            isActive: true,
+    const updatedEmployee = await this.prisma.$transaction(
+      async (tx) => {
+        const updated = await tx.employee.update({
+          where: {
+            id: employeeId,
           },
-        },
 
-        user: {
-          select: {
-            id: true,
-            email: true,
-            role: true,
-            status: true,
+          data: {
+            ...(dto.firstName !== undefined && {
+              firstName: dto.firstName.trim(),
+            }),
+
+            ...(dto.lastName !== undefined && {
+              lastName: dto.lastName.trim(),
+            }),
+
+            ...(dto.phone !== undefined && {
+              phone: dto.phone.trim() || null,
+            }),
+
+            ...(dto.jobTitle !== undefined && {
+              jobTitle: dto.jobTitle.trim() || null,
+            }),
+
+            ...(dto.departmentId !== undefined && {
+              departmentId: dto.departmentId,
+            }),
+
+            ...(dto.dateOfBirth !== undefined && {
+              dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : null,
+            }),
+            ...(dto.gender !== undefined && { gender: dto.gender }),
+            ...(dto.dateOfJoining !== undefined && {
+              dateOfJoining:
+                dto.dateOfJoining === null ? null : new Date(dto.dateOfJoining),
+            }),
+
+            ...(dto.workMode !== undefined && {
+              workMode: dto.workMode,
+            }),
           },
-        },
+
+          include: {
+            department: {
+              select: {
+                id: true,
+                name: true,
+                isActive: true,
+              },
+            },
+
+            user: {
+              select: {
+                id: true,
+                email: true,
+                role: true,
+                status: true,
+              },
+            },
+          },
+        });
+        await initializeEmployeeBalances(tx, employeeId);
+        return updated;
       },
-    });
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
 
     return {
       success: true,
@@ -716,6 +749,7 @@ export class EmployeesService {
     }
 
     const { profileImagePath, ...employeeData } = employee;
+    void profileImagePath;
 
     return {
       success: true,

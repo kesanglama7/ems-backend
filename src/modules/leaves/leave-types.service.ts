@@ -1,4 +1,8 @@
 import {
+  eligibleLeaveWhere,
+  initializeEmployeeBalances,
+} from './leave-eligibility';
+import {
   BadRequestException,
   ConflictException,
   Injectable,
@@ -32,6 +36,8 @@ export class LeaveTypesService {
     const leaveType = await this.prisma.leaveType.create({
       data: {
         name,
+        audience: dto.audience,
+        eligibleGender: dto.eligibleGender,
         yearlyAllowance: dto.yearlyAllowance,
         hasLimitedBalance: dto.hasLimitedBalance,
         allowHalfDay: dto.allowHalfDay,
@@ -54,11 +60,14 @@ export class LeaveTypesService {
         isEmployeeRequestable: true,
         isPaid: true,
         isSystem: true,
+        audience: true,
+        eligibleGender: true,
         createdAt: true,
         updatedAt: true,
       },
     });
 
+    await this.initializeAll();
     return {
       success: true,
       message: 'Leave type created successfully.',
@@ -66,11 +75,18 @@ export class LeaveTypesService {
     };
   }
 
-  async findAll(role: Role) {
+  async findAll(role: Role, userId: string) {
+    const employee =
+      role === Role.EMPLOYEE
+        ? await this.prisma.employee.findUnique({ where: { userId } })
+        : null;
+    if (role === Role.EMPLOYEE && !employee)
+      throw new NotFoundException('Employee profile not found.');
     const leaveTypes = await this.prisma.leaveType.findMany({
       where:
         role === Role.EMPLOYEE
           ? {
+              ...eligibleLeaveWhere(employee!.id, employee!.gender),
               isActive: true,
               isEmployeeRequestable: true,
               isSystem: false,
@@ -92,6 +108,8 @@ export class LeaveTypesService {
         isEmployeeRequestable: true,
         isPaid: true,
         isSystem: true,
+        audience: true,
+        eligibleGender: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -112,6 +130,8 @@ export class LeaveTypesService {
         id: true,
         name: true,
         isSystem: true,
+        audience: true,
+        eligibleGender: true,
       },
     });
 
@@ -145,12 +165,25 @@ export class LeaveTypesService {
       }
     }
 
+    if (
+      dto.hasLimitedBalance !== undefined &&
+      (await this.prisma.leaveRequest.count({
+        where: { leaveTypeId, status: { in: ['PENDING', 'APPROVED'] } },
+      })) > 0
+    )
+      throw new BadRequestException(
+        'Balance mode cannot change while pending or approved leave exists.',
+      );
     const updatedLeaveType = await this.prisma.leaveType.update({
       where: {
         id: leaveTypeId,
       },
 
       data: {
+        ...(dto.audience !== undefined && { audience: dto.audience }),
+        ...(dto.eligibleGender !== undefined && {
+          eligibleGender: dto.eligibleGender,
+        }),
         ...(dto.name !== undefined && {
           name: dto.name.trim(),
         }),
@@ -188,11 +221,14 @@ export class LeaveTypesService {
         isEmployeeRequestable: true,
         isPaid: true,
         isSystem: true,
+        audience: true,
+        eligibleGender: true,
         createdAt: true,
         updatedAt: true,
       },
     });
 
+    await this.initializeAll();
     return {
       success: true,
       message: 'Leave type updated successfully.',
@@ -209,6 +245,8 @@ export class LeaveTypesService {
         id: true,
         isActive: true,
         isSystem: true,
+        audience: true,
+        eligibleGender: true,
       },
     });
 
@@ -243,6 +281,83 @@ export class LeaveTypesService {
       success: true,
       message: 'Leave type deactivated successfully.',
       data: updatedLeaveType,
+    };
+  }
+  private async initializeAll() {
+    for (const employee of await this.prisma.employee.findMany({
+      select: { id: true },
+    }))
+      await initializeEmployeeBalances(this.prisma, employee.id);
+  }
+
+  async assign(leaveTypeId: string, employeeId: string, adminUserId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const type = await tx.leaveType.findUnique({
+        where: { id: leaveTypeId },
+      });
+      const employee = await tx.employee.findUnique({
+        where: { id: employeeId },
+      });
+      if (!type || !employee)
+        throw new NotFoundException('Employee or leave type not found.');
+      if (!type.isActive || type.audience !== 'SELECTED')
+        throw new BadRequestException(
+          'Only active SELECTED leave types support assignment.',
+        );
+      if (type.eligibleGender && type.eligibleGender !== employee.gender)
+        throw new BadRequestException(
+          'Employee gender does not meet this leave type eligibility.',
+        );
+      const data = await tx.leaveTypeAssignment.upsert({
+        where: { employeeId_leaveTypeId: { employeeId, leaveTypeId } },
+        update: {},
+        create: { employeeId, leaveTypeId, assignedByUserId: adminUserId },
+      });
+      await initializeEmployeeBalances(tx, employeeId);
+      return { success: true, data };
+    });
+  }
+
+  async assignments(leaveTypeId: string) {
+    return {
+      success: true,
+      data: await this.prisma.leaveTypeAssignment.findMany({
+        where: { leaveTypeId },
+        include: {
+          employee: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              employeeCode: true,
+            },
+          },
+        },
+      }),
+    };
+  }
+
+  async unassign(leaveTypeId: string, employeeId: string) {
+    await this.prisma.$transaction(
+      async (tx) => {
+        if (
+          await tx.leaveRequest.count({
+            where: { leaveTypeId, employeeId, status: 'PENDING' },
+          })
+        )
+          throw new BadRequestException(
+            'Review pending leave before removing this assignment.',
+          );
+        await tx.leaveTypeAssignment.deleteMany({
+          where: { leaveTypeId, employeeId },
+        });
+      },
+      { isolationLevel: 'Serializable' },
+    );
+    return {
+      success: true,
+      message:
+        'Assignment removed. Historical balances retained for audit only.',
     };
   }
 }

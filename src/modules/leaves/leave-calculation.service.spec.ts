@@ -4,7 +4,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { LeaveCalculationService } from './leave-calculation.service';
 
 describe('LeaveCalculationService', () => {
+  const findHolidays = jest.fn().mockResolvedValue([]);
   const prisma = {
+    officeHoliday: { findMany: findHolidays },
     officeSetting: {
       findFirst: jest.fn().mockResolvedValue({
         workingDays: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'],
@@ -13,6 +15,10 @@ describe('LeaveCalculationService', () => {
     },
   } as unknown as PrismaService;
   const service = new LeaveCalculationService(prisma);
+
+  beforeEach(() => {
+    findHolidays.mockResolvedValue([]);
+  });
 
   it('excludes weekends from full-day leave', async () => {
     const result = await service.calculate(
@@ -42,5 +48,23 @@ describe('LeaveCalculationService', () => {
     await expect(
       service.calculate('2026-12-31', '2027-01-01', LeaveDuration.FULL_DAY),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+  it('excludes office closures from leave deductions', async () => {
+    findHolidays.mockResolvedValue([{ date: new Date('2026-09-14') }] as never);
+    expect(
+      (
+        await service.calculate(
+          '2026-09-11',
+          '2026-09-14',
+          LeaveDuration.FULL_DAY,
+        )
+      ).requestedDays,
+    ).toBe(1);
+  });
+  it('rejects half-day leave on an office holiday', async () => {
+    findHolidays.mockResolvedValue([{ date: new Date('2026-09-14') }] as never);
+    await expect(
+      service.calculate('2026-09-14', '2026-09-14', LeaveDuration.FIRST_HALF),
+    ).rejects.toThrow('no working days');
   });
 });
