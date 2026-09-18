@@ -19,6 +19,7 @@ import {
   TOKEN_FRESHNESS_MS,
 } from './notification-policy';
 import { notificationTemplate } from './notification-templates';
+import { announcementNotificationContent } from './announcement-notification-content';
 
 const inboxSelect = {
   id: true,
@@ -74,6 +75,16 @@ export class NotificationsService {
       where: { id: { in: [...new Set(userIds)] }, status: 'ACTIVE' },
       select: { id: true },
     });
+    const announcement =
+      event.type === 'ANNOUNCEMENT_PUBLISHED' && event.announcementId
+        ? await tx.announcement.findUnique({
+            where: { id: event.announcementId },
+            select: { title: true, body: true },
+          })
+        : null;
+    const template = announcement
+      ? announcementNotificationContent(announcement.title, announcement.body)
+      : notificationTemplate(event.type, event.requestStatus);
     const proposed = users.map((user) => ({
       id: randomUUID(),
       recipientUserId: user.id,
@@ -81,7 +92,7 @@ export class NotificationsService {
       eventId,
       type: event.type,
       ...entityFor(event),
-      ...notificationTemplate(event.type, event.requestStatus),
+      ...template,
       createdAt: now,
       expiresAt: new Date(now.getTime() + RETENTION_MS),
     }));
@@ -165,6 +176,29 @@ export class NotificationsService {
     });
     const hasMore = data.length > query.limit;
     const items = data.slice(0, query.limit);
+    // Hydrate existing generic inbox notifications without resending old pushes.
+    const announcementIds = items
+      .filter((item) => item.type === 'ANNOUNCEMENT_PUBLISHED')
+      .map((item) => item.entityId);
+    if (announcementIds.length) {
+      const announcements = await this.prisma.announcement.findMany({
+        where: { id: { in: announcementIds }, receipts: { some: { userId } } },
+        select: { id: true, title: true, body: true },
+      });
+      const content = new Map(
+        announcements.map((notice) => [
+          notice.id,
+          announcementNotificationContent(notice.title, notice.body),
+        ]),
+      );
+      for (const item of items) {
+        if (
+          item.type === 'ANNOUNCEMENT_PUBLISHED' &&
+          content.has(item.entityId)
+        )
+          Object.assign(item, content.get(item.entityId));
+      }
+    }
     const last = items.at(-1);
     const nextCursor =
       hasMore && last
