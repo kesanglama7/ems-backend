@@ -12,6 +12,8 @@ import {
 } from '@nestjs/common';
 
 import {
+  ApiBadRequestResponse,
+  ApiBody,
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
@@ -46,15 +48,19 @@ export class LeaveTypesController {
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   @ApiOperation({
-    summary:
-      'Assign a restricted leave type to an employee and initialize balance',
+    summary: 'Assign a restricted leave type to one or multiple employees',
   })
+  @ApiBody({ type: AssignLeaveTypeDto })
+  @ApiBadRequestResponse({
+    description: 'Invalid IDs or employee eligibility. No changes are made.',
+  })
+  @ApiConflictResponse({ description: 'Concurrent update; retry the request.' })
   assign(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AssignLeaveTypeDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.leaveTypesService.assign(id, dto.employeeId, user.id);
+    return this.leaveTypesService.assign(id, dto.employeeIds, user.id);
   }
 
   @Get(':id/assignments')
@@ -64,14 +70,24 @@ export class LeaveTypesController {
     return this.leaveTypesService.assignments(id);
   }
 
-  @Delete(':id/assignments/:employeeId')
+  @Delete(':id/assignments')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
+  @ApiOperation({
+    summary: 'Remove one or multiple leave assignments',
+    description:
+      'All-or-nothing removal. Pending leave blocks removal. Historical balances are preserved.',
+  })
+  @ApiBody({ type: AssignLeaveTypeDto })
+  @ApiBadRequestResponse({
+    description: 'Invalid IDs or pending leave. No changes are made.',
+  })
+  @ApiConflictResponse({ description: 'Concurrent update; retry the request.' })
   unassign(
     @Param('id', ParseUUIDPipe) id: string,
-    @Param('employeeId', ParseUUIDPipe) employeeId: string,
+    @Body() dto: AssignLeaveTypeDto,
   ) {
-    return this.leaveTypesService.unassign(id, employeeId);
+    return this.leaveTypesService.unassign(id, dto.employeeIds);
   }
 
   @Post()

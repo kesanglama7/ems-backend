@@ -13,7 +13,8 @@ import { PrismaService } from '../prisma/prisma.service';
 
 import { CreateLeaveTypeDto } from './dto/create-leave-type.dto';
 import { UpdateLeaveTypeDto } from './dto/update-leave-type.dto';
-import { Role } from '@prisma/client';
+import { Prisma, Role } from '@prisma/client';
+import { getNormalizedWorkDate } from '../attendance/utils/attendance-date.util';
 
 @Injectable()
 export class LeaveTypesService {
@@ -290,31 +291,70 @@ export class LeaveTypesService {
       await initializeEmployeeBalances(this.prisma, employee.id);
   }
 
-  async assign(leaveTypeId: string, employeeId: string, adminUserId: string) {
-    return this.prisma.$transaction(async (tx) => {
+  async assign(
+    leaveTypeId: string,
+    employeeIds: string[],
+    adminUserId: string,
+  ) {
+    return this.assignmentTransaction(async (tx) => {
       const type = await tx.leaveType.findUnique({
         where: { id: leaveTypeId },
       });
-      const employee = await tx.employee.findUnique({
-        where: { id: employeeId },
-      });
-      if (!type || !employee)
-        throw new NotFoundException('Employee or leave type not found.');
+      if (!type) throw new NotFoundException('Leave type not found.');
       if (!type.isActive || type.audience !== 'SELECTED')
         throw new BadRequestException(
           'Only active SELECTED leave types support assignment.',
         );
-      if (type.eligibleGender && type.eligibleGender !== employee.gender)
-        throw new BadRequestException(
-          'Employee gender does not meet this leave type eligibility.',
-        );
-      const data = await tx.leaveTypeAssignment.upsert({
-        where: { employeeId_leaveTypeId: { employeeId, leaveTypeId } },
-        update: {},
-        create: { employeeId, leaveTypeId, assignedByUserId: adminUserId },
+      const employees = await this.assignmentEmployees(tx, employeeIds);
+      const ineligibleEmployeeIds = employees
+        .filter(
+          (employee) =>
+            type.eligibleGender && type.eligibleGender !== employee.gender,
+        )
+        .map((employee) => employee.id);
+      if (ineligibleEmployeeIds.length)
+        throw new BadRequestException({
+          message: 'Employee gender does not meet this leave type eligibility.',
+          employeeIds: ineligibleEmployeeIds,
+        });
+
+      const created = await tx.leaveTypeAssignment.createMany({
+        data: employeeIds.map((employeeId) => ({
+          employeeId,
+          leaveTypeId,
+          assignedByUserId: adminUserId,
+        })),
+        skipDuplicates: true,
       });
-      await initializeEmployeeBalances(tx, employeeId);
-      return { success: true, data };
+      const office = await tx.officeSetting.findFirst({
+        orderBy: { createdAt: 'asc' },
+        select: { timezone: true },
+      });
+      const year = getNormalizedWorkDate(
+        new Date(),
+        office?.timezone ?? 'Asia/Kathmandu',
+      ).getUTCFullYear();
+      // Never reset a balance when an assignment is repeated or restored.
+      await tx.employeeLeaveBalance.createMany({
+        data: employeeIds.map((employeeId) => ({
+          employeeId,
+          leaveTypeId,
+          year,
+          totalDays: type.yearlyAllowance,
+        })),
+        skipDuplicates: true,
+      });
+      return {
+        success: true,
+        message: 'Leave assignments saved successfully.',
+        data: {
+          leaveTypeId,
+          employeeIds,
+          requestedCount: employeeIds.length,
+          assignedCount: created.count,
+          alreadyAssignedCount: employeeIds.length - created.count,
+        },
+      };
     });
   }
 
@@ -337,27 +377,81 @@ export class LeaveTypesService {
     };
   }
 
-  async unassign(leaveTypeId: string, employeeId: string) {
-    await this.prisma.$transaction(
-      async (tx) => {
-        if (
-          await tx.leaveRequest.count({
-            where: { leaveTypeId, employeeId, status: 'PENDING' },
-          })
-        )
-          throw new BadRequestException(
-            'Review pending leave before removing this assignment.',
-          );
-        await tx.leaveTypeAssignment.deleteMany({
-          where: { leaveTypeId, employeeId },
+  async unassign(leaveTypeId: string, employeeIds: string[]) {
+    return this.assignmentTransaction(async (tx) => {
+      const type = await tx.leaveType.findUnique({
+        where: { id: leaveTypeId },
+        select: { id: true },
+      });
+      if (!type) throw new NotFoundException('Leave type not found.');
+      await this.assignmentEmployees(tx, employeeIds);
+      const pending = await tx.leaveRequest.findMany({
+        where: {
+          leaveTypeId,
+          employeeId: { in: employeeIds },
+          status: 'PENDING',
+        },
+        select: { employeeId: true },
+        distinct: ['employeeId'],
+      });
+      if (pending.length)
+        throw new BadRequestException({
+          message: 'Review pending leave before removing these assignments.',
+          employeeIds: pending.map((request) => request.employeeId),
         });
-      },
-      { isolationLevel: 'Serializable' },
-    );
-    return {
-      success: true,
-      message:
-        'Assignment removed. Historical balances retained for audit only.',
-    };
+      const removed = await tx.leaveTypeAssignment.deleteMany({
+        where: { leaveTypeId, employeeId: { in: employeeIds } },
+      });
+      return {
+        success: true,
+        message:
+          'Assignments removed. Historical balances and leave requests retained.',
+        data: {
+          leaveTypeId,
+          employeeIds,
+          requestedCount: employeeIds.length,
+          removedCount: removed.count,
+          notAssignedCount: employeeIds.length - removed.count,
+        },
+      };
+    });
+  }
+
+  private async assignmentEmployees(
+    tx: Prisma.TransactionClient,
+    employeeIds: string[],
+  ) {
+    const employees = await tx.employee.findMany({
+      where: { id: { in: employeeIds } },
+      select: { id: true, gender: true },
+    });
+    const found = new Set(employees.map((employee) => employee.id));
+    const missingEmployeeIds = employeeIds.filter((id) => !found.has(id));
+    if (missingEmployeeIds.length)
+      throw new NotFoundException({
+        message: 'Employees not found.',
+        employeeIds: missingEmployeeIds,
+      });
+    return employees;
+  }
+
+  private async assignmentTransaction<T>(
+    operation: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await this.prisma.$transaction(operation, {
+        isolationLevel: 'Serializable',
+        timeout: 15000,
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2034'
+      )
+        throw new ConflictException(
+          'Leave assignments changed concurrently. Retry the request.',
+        );
+      throw error;
+    }
   }
 }
