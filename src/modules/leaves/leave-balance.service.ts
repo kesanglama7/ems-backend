@@ -28,9 +28,16 @@ export class LeaveBalanceService {
     employeeId: string,
     leaveTypeId: string,
     year: number,
-    allowance: Prisma.Decimal,
   ) {
-    await assertLeaveEligible(client, employeeId, leaveTypeId);
+    const type = await assertLeaveEligible(client, employeeId, leaveTypeId);
+    const assignment =
+      type.audience === 'SELECTED'
+        ? await client.leaveTypeAssignment.findUnique({
+            where: { employeeId_leaveTypeId: { employeeId, leaveTypeId } },
+            select: { assignedDays: true },
+          })
+        : null;
+    const allowance = assignment?.assignedDays ?? type.yearlyAllowance;
     return client.employeeLeaveBalance.upsert({
       where: { employeeId_leaveTypeId_year: { employeeId, leaveTypeId, year } },
       update: {},
@@ -67,6 +74,12 @@ export class LeaveBalanceService {
         ...eligibleLeaveWhere(employeeId, employee.gender),
       },
       orderBy: { name: 'asc' },
+      include: {
+        assignments: {
+          where: { employeeId },
+          select: { assignedDays: true },
+        },
+      },
     });
     const rows = await this.prisma.employeeLeaveBalance.findMany({
       where: { employeeId, year },
@@ -86,7 +99,11 @@ export class LeaveBalanceService {
           pendingDays: null,
           remainingDays: null,
         };
-      const totalDays = Number(row?.totalDays ?? type.yearlyAllowance);
+      const defaultDays =
+        type.audience === 'SELECTED'
+          ? (type.assignments[0]?.assignedDays ?? 0)
+          : type.yearlyAllowance;
+      const totalDays = Number(row?.totalDays ?? defaultDays);
       const usedDays = Number(row?.usedDays ?? 0);
       const pendingDays = Number(row?.pendingDays ?? 0);
       return {
@@ -365,13 +382,7 @@ export class LeaveBalanceService {
       );
     return this.prisma.$transaction(
       async (tx) => {
-        const balance = await this.ensure(
-          tx,
-          employeeId,
-          leaveTypeId,
-          year,
-          type.yearlyAllowance,
-        );
+        const balance = await this.ensure(tx, employeeId, leaveTypeId, year);
         const totalDays = Number(balance.totalDays) + days;
         if (totalDays < Number(balance.usedDays) + Number(balance.pendingDays))
           throw new BadRequestException(

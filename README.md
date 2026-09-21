@@ -4,6 +4,8 @@ Start with [deployment and frontend API handoff](docs/OFFICE_FEATURES_HANDOFF.md
 
 This upgrade adds DOB/gender and birthdays, leave eligibility/assignments and late approval, immediate balances, early-checkout notifications, office holidays, resource tracking, request category management, and optional bill photos. Apply the included migration before starting the updated backend.
 
+See [compensatory leave allocations and dynamic notifications](COMPENSATORY_LEAVE_AND_NOTIFICATIONS.md) for the latest API payload and deployment note.
+
 ---
 
 <p align="center">
@@ -104,7 +106,6 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
-
 
 ## Notification inbox and push delivery
 

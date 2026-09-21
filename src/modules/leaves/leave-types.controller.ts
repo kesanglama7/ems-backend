@@ -1,4 +1,7 @@
-import { AssignLeaveTypeDto } from './dto/assign-leave-type.dto';
+import {
+  AssignLeaveTypeDto,
+  UnassignLeaveTypeDto,
+} from './dto/assign-leave-type.dto';
 import {
   Body,
   Controller,
@@ -60,7 +63,7 @@ export class LeaveTypesController {
     @Body() dto: AssignLeaveTypeDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.leaveTypesService.assign(id, dto.employeeIds, user.id);
+    return this.leaveTypesService.assign(id, dto.assignments, user.id);
   }
 
   @Get(':id/assignments')
@@ -78,14 +81,14 @@ export class LeaveTypesController {
     description:
       'All-or-nothing removal. Pending leave blocks removal. Historical balances are preserved.',
   })
-  @ApiBody({ type: AssignLeaveTypeDto })
+  @ApiBody({ type: UnassignLeaveTypeDto })
   @ApiBadRequestResponse({
     description: 'Invalid IDs or pending leave. No changes are made.',
   })
   @ApiConflictResponse({ description: 'Concurrent update; retry the request.' })
   unassign(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: AssignLeaveTypeDto,
+    @Body() dto: UnassignLeaveTypeDto,
   ) {
     return this.leaveTypesService.unassign(id, dto.employeeIds);
   }

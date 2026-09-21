@@ -77,16 +77,13 @@ export class LeavesService {
       canRequest: true,
     };
     if (type.hasLimitedBalance) {
-      const balance = await this.prisma.employeeLeaveBalance.findUnique({
-        where: {
-          employeeId_leaveTypeId_year: {
-            employeeId: employee.id,
-            leaveTypeId: type.id,
-            year: calculated.year,
-          },
-        },
-      });
-      const total = Number(balance?.totalDays ?? type.yearlyAllowance);
+      const balance = await this.balances.ensure(
+        this.prisma,
+        employee.id,
+        type.id,
+        calculated.year,
+      );
+      const total = Number(balance.totalDays);
       const used = Number(balance?.usedDays ?? 0);
       const pending = Number(balance?.pendingDays ?? 0);
       const remaining = total - used - pending;
@@ -152,7 +149,6 @@ export class LeavesService {
               employee.id,
               type.id,
               calculated.year,
-              type.yearlyAllowance,
             );
             this.balances.assertAvailable(balance, calculated.requestedDays);
             await tx.employeeLeaveBalance.update({
@@ -352,7 +348,6 @@ export class LeavesService {
                 request.employeeId,
                 request.leaveTypeId,
                 request.startDate.getUTCFullYear(),
-                request.leaveType.yearlyAllowance,
               );
               this.balances.assertAvailable(balance, approvedDays);
               await tx.employeeLeaveBalance.update({
@@ -465,7 +460,6 @@ export class LeavesService {
               employee.id,
               type.id,
               calculated.year,
-              type.yearlyAllowance,
             );
             this.balances.assertAvailable(balance, calculated.requestedDays);
             await tx.employeeLeaveBalance.update({

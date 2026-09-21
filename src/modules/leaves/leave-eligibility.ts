@@ -70,13 +70,22 @@ export async function initializeEmployeeBalances(
       isActive: true,
       ...eligibleLeaveWhere(employeeId, employee.gender),
     },
+    include: {
+      assignments: {
+        where: { employeeId },
+        select: { assignedDays: true },
+      },
+    },
   });
   return client.employeeLeaveBalance.createMany({
     data: types.map((type) => ({
       employeeId,
       leaveTypeId: type.id,
       year,
-      totalDays: type.yearlyAllowance,
+      totalDays:
+        type.audience === LeaveAudience.SELECTED
+          ? (type.assignments[0]?.assignedDays ?? 0)
+          : type.yearlyAllowance,
     })),
     skipDuplicates: true,
   });

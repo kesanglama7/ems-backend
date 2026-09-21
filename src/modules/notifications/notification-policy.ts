@@ -31,6 +31,9 @@ export const RETRYABLE_CODES = new Set([
 
 export interface NotificationEvent {
   type: NotificationType;
+  /** Explicit content is reserved for events whose entity is deleted first. */
+  title?: string;
+  message?: string;
   requestStatus?: EmployeeRequestStatus;
   eventId?: string;
   actorUserId?: string;

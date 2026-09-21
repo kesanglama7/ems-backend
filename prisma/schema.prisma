@@ -149,8 +149,8 @@ model User {
   resolvedEmployeeRequests  EmployeeRequest[]         @relation("EmployeeRequestResolver")
   dismissedEmployeeRequests EmployeeRequest[]         @relation("EmployeeRequestDismisser")
   employeeRequestActivities EmployeeRequestActivity[]
-  authoredAnnouncements       Announcement[]          @relation("AnnouncementAuthor")
-  announcementReceipts        AnnouncementReceipt[]
+  authoredAnnouncements     Announcement[]            @relation("AnnouncementAuthor")
+  announcementReceipts      AnnouncementReceipt[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -182,7 +182,7 @@ model Department {
   description String?
   isActive    Boolean @default(true)
 
-  employee Employee[]
+  employee      Employee[]
   announcements Announcement[]
 
   createdAt DateTime @default(now())
@@ -202,11 +202,11 @@ model Employee {
 
   workMode EmployeeWorkMode @default(ON_FIELD)
 
-  dateOfBirth DateTime? @db.Date
-  gender Gender?
+  dateOfBirth           DateTime?             @db.Date
+  gender                Gender?
   birthdayDismissedYear Int?
-  leaveAssignments LeaveTypeAssignment[]
-  resourceAssignments ResourceAssignment[]
+  leaveAssignments      LeaveTypeAssignment[]
+  resourceAssignments   ResourceAssignment[]
 
   dateOfJoining DateTime?
 
@@ -322,14 +322,14 @@ model Attendance {
   checkOutDistanceMeters Float?
 
   // Attendance calculations
-  isLate            Boolean @default(false)
-  lateMinutes       Int     @default(0)
-  earlyMinutes      Int     @default(0)
-  earlyCheckoutMinutes Int @default(0)
-  isEarlyCheckout Boolean @default(false)
-  afterHoursMinutes Int     @default(0)
-  totalMinutes      Int?
-  overtimeMinutes   Int?
+  isLate               Boolean @default(false)
+  lateMinutes          Int     @default(0)
+  earlyMinutes         Int     @default(0)
+  earlyCheckoutMinutes Int     @default(0)
+  isEarlyCheckout      Boolean @default(false)
+  afterHoursMinutes    Int     @default(0)
+  totalMinutes         Int?
+  overtimeMinutes      Int?
 
   audits           AttendanceAudit[]
   employeeRequests EmployeeRequest[]
@@ -372,9 +372,9 @@ model LeaveType {
 
   isActive Boolean @default(true)
 
-  audience LeaveAudience @default(ALL)
+  audience       LeaveAudience         @default(ALL)
   eligibleGender Gender?
-  assignments LeaveTypeAssignment[]
+  assignments    LeaveTypeAssignment[]
 
   yearlyAllowance       Decimal @default(0) @db.Decimal(6, 2)
   hasLimitedBalance     Boolean @default(false)
@@ -601,25 +601,25 @@ enum AnnouncementPriority {
 }
 
 model Announcement {
-  id                      String               @id @default(uuid())
-  title                   String               @db.VarChar(160)
-  body                    String               @db.Text
-  priority                AnnouncementPriority @default(NORMAL)
-  status                  AnnouncementStatus   @default(DRAFT)
-  audience                AnnouncementAudience @default(ALL_EMPLOYEES)
-  departmentId            String?
-  department              Department?          @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  showOnLogin             Boolean              @default(false)
-  acknowledgmentRequired Boolean              @default(false)
-  publishAt               DateTime?
-  publishedAt             DateTime?
-  expiresAt               DateTime?
-  archivedAt              DateTime?
-  authorId                String
-  author                  User                 @relation("AnnouncementAuthor", fields: [authorId], references: [id], onDelete: Restrict)
-  receipts                AnnouncementReceipt[]
-  createdAt               DateTime             @default(now())
-  updatedAt               DateTime             @updatedAt
+  id                     String                @id @default(uuid())
+  title                  String                @db.VarChar(160)
+  body                   String                @db.Text
+  priority               AnnouncementPriority  @default(NORMAL)
+  status                 AnnouncementStatus    @default(DRAFT)
+  audience               AnnouncementAudience  @default(ALL_EMPLOYEES)
+  departmentId           String?
+  department             Department?           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  showOnLogin            Boolean               @default(false)
+  acknowledgmentRequired Boolean               @default(false)
+  publishAt              DateTime?
+  publishedAt            DateTime?
+  expiresAt              DateTime?
+  archivedAt             DateTime?
+  authorId               String
+  author                 User                  @relation("AnnouncementAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  receipts               AnnouncementReceipt[]
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
 
   @@index([status, publishAt])
   @@index([status, expiresAt])
@@ -648,11 +648,11 @@ model EmployeeRequest {
   employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   requestCategoryId String?
-  requestCategory RequestCategory? @relation(fields: [requestCategoryId], references: [id], onDelete: Restrict)
-  attachments RequestAttachment[]
-  resourceId String?
-  resource Resource? @relation(fields: [resourceId], references: [id], onDelete: Restrict)
-  resourceQuantity Int?
+  requestCategory   RequestCategory?    @relation(fields: [requestCategoryId], references: [id], onDelete: Restrict)
+  attachments       RequestAttachment[]
+  resourceId        String?
+  resource          Resource?           @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+  resourceQuantity  Int?
 
   category    EmployeeRequestCategory
   subject     String
@@ -710,80 +710,85 @@ model EmployeeRequestActivity {
 }
 
 model LeaveTypeAssignment {
-  employeeId String
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  leaveTypeId String
-  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  employeeId       String
+  employee         Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId      String
+  leaveType        LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  assignedDays     Decimal   @db.Decimal(6, 2)
   assignedByUserId String
-  createdAt DateTime @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
   @@id([employeeId, leaveTypeId])
 }
 
 model OfficeHoliday {
-  id String @id @default(uuid())
-  name String @db.VarChar(160)
-  date DateTime @unique @db.Date
-  description String? @db.VarChar(1000)
-  isOfficeClosed Boolean @default(true)
+  id              String   @id @default(uuid())
+  name            String   @db.VarChar(160)
+  date            DateTime @unique @db.Date
+  description     String?  @db.VarChar(1000)
+  isOfficeClosed  Boolean  @default(true)
   createdByUserId String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model RequestCategory {
-  id String @id @default(uuid())
-  name String @unique @db.VarChar(100)
-  description String? @db.VarChar(500)
-  isActive Boolean @default(true)
+  id             String                   @id @default(uuid())
+  name           String                   @unique @db.VarChar(100)
+  description    String?                  @db.VarChar(500)
+  isActive       Boolean                  @default(true)
   legacyCategory EmployeeRequestCategory? @unique
-  requests EmployeeRequest[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  requests       EmployeeRequest[]
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
 }
 
 model RequestAttachment {
-  id String @id @default(uuid())
-  requestId String
-  request EmployeeRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  id               String          @id @default(uuid())
+  requestId        String
+  request          EmployeeRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   originalFileName String
-  mimeType String
-  fileSize Int
-  bucket String
-  storagePath String @unique
-  createdAt DateTime @default(now())
+  mimeType         String
+  fileSize         Int
+  bucket           String
+  storagePath      String          @unique
+  createdAt        DateTime        @default(now())
+
   @@index([requestId])
 }
 
 model Resource {
-  id String @id @default(uuid())
-  name String @unique @db.VarChar(160)
-  description String? @db.VarChar(1000)
-  totalQuantity Int
+  id                String               @id @default(uuid())
+  name              String               @unique @db.VarChar(160)
+  description       String?              @db.VarChar(1000)
+  totalQuantity     Int
   availableQuantity Int
-  isActive Boolean @default(true)
-  assignments ResourceAssignment[]
-  requests EmployeeRequest[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  isActive          Boolean              @default(true)
+  assignments       ResourceAssignment[]
+  requests          EmployeeRequest[]
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 }
 
 model ResourceAssignment {
-  id String @id @default(uuid())
-  resourceId String
-  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Restrict)
-  employeeId String
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  quantity Int
-  assetTag String? @db.VarChar(100)
-  note String? @db.VarChar(1000)
-  assignedByUserId String
-  assignedAt DateTime @default(now())
-  returnRequestedAt DateTime?
+  id                      String    @id @default(uuid())
+  resourceId              String
+  resource                Resource  @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+  employeeId              String
+  employee                Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  quantity                Int
+  assetTag                String?   @db.VarChar(100)
+  note                    String?   @db.VarChar(1000)
+  assignedByUserId        String
+  assignedAt              DateTime  @default(now())
+  returnRequestedAt       DateTime?
   returnRequestedByUserId String?
-  returnRequestNote String? @db.VarChar(1000)
-  returnedAt DateTime?
-  returnedByUserId String?
-  updatedAt DateTime @updatedAt
+  returnRequestNote       String?   @db.VarChar(1000)
+  returnedAt              DateTime?
+  returnedByUserId        String?
+  updatedAt               DateTime  @updatedAt
+
   @@index([employeeId, returnedAt])
   @@index([resourceId, returnedAt])
 }

@@ -18,8 +18,8 @@ import {
   RETENTION_MS,
   TOKEN_FRESHNESS_MS,
 } from './notification-policy';
-import { notificationTemplate } from './notification-templates';
 import { announcementNotificationContent } from './announcement-notification-content';
+import { notificationContent } from './notification-content';
 
 const inboxSelect = {
   id: true,
@@ -75,16 +75,7 @@ export class NotificationsService {
       where: { id: { in: [...new Set(userIds)] }, status: 'ACTIVE' },
       select: { id: true },
     });
-    const announcement =
-      event.type === 'ANNOUNCEMENT_PUBLISHED' && event.announcementId
-        ? await tx.announcement.findUnique({
-            where: { id: event.announcementId },
-            select: { title: true, body: true },
-          })
-        : null;
-    const template = announcement
-      ? announcementNotificationContent(announcement.title, announcement.body)
-      : notificationTemplate(event.type, event.requestStatus);
+    const template = await notificationContent(tx, event);
     const proposed = users.map((user) => ({
       id: randomUUID(),
       recipientUserId: user.id,

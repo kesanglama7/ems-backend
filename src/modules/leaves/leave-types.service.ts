@@ -13,12 +13,17 @@ import { PrismaService } from '../prisma/prisma.service';
 
 import { CreateLeaveTypeDto } from './dto/create-leave-type.dto';
 import { UpdateLeaveTypeDto } from './dto/update-leave-type.dto';
-import { Prisma, Role } from '@prisma/client';
+import { NotificationType, Prisma, Role } from '@prisma/client';
 import { getNormalizedWorkDate } from '../attendance/utils/attendance-date.util';
+import type { LeaveTypeAllocationDto } from './dto/assign-leave-type.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class LeaveTypesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async create(dto: CreateLeaveTypeDto) {
     const name = dto.name.trim();
@@ -293,10 +298,19 @@ export class LeaveTypesService {
 
   async assign(
     leaveTypeId: string,
-    employeeIds: string[],
+    assignments: LeaveTypeAllocationDto[],
     adminUserId: string,
   ) {
     return this.assignmentTransaction(async (tx) => {
+      const employeeIds = assignments.map((item) => item.employeeId);
+      const duplicateEmployeeIds = employeeIds.filter(
+        (id, index) => employeeIds.indexOf(id) !== index,
+      );
+      if (duplicateEmployeeIds.length)
+        throw new BadRequestException({
+          message: 'Each employee can appear only once in an assignment.',
+          employeeIds: [...new Set(duplicateEmployeeIds)],
+        });
       const type = await tx.leaveType.findUnique({
         where: { id: leaveTypeId },
       });
@@ -318,14 +332,14 @@ export class LeaveTypesService {
           employeeIds: ineligibleEmployeeIds,
         });
 
-      const created = await tx.leaveTypeAssignment.createMany({
-        data: employeeIds.map((employeeId) => ({
-          employeeId,
-          leaveTypeId,
-          assignedByUserId: adminUserId,
-        })),
-        skipDuplicates: true,
-      });
+      if (
+        !type.allowHalfDay &&
+        assignments.some((assignment) => !Number.isInteger(assignment.days))
+      )
+        throw new BadRequestException(
+          'This leave type only supports whole-day allocations.',
+        );
+
       const office = await tx.officeSetting.findFirst({
         orderBy: { createdAt: 'asc' },
         select: { timezone: true },
@@ -334,25 +348,96 @@ export class LeaveTypesService {
         new Date(),
         office?.timezone ?? 'Asia/Kathmandu',
       ).getUTCFullYear();
-      // Never reset a balance when an assignment is repeated or restored.
-      await tx.employeeLeaveBalance.createMany({
-        data: employeeIds.map((employeeId) => ({
-          employeeId,
-          leaveTypeId,
-          year,
-          totalDays: type.yearlyAllowance,
-        })),
-        skipDuplicates: true,
+
+      const existingAssignments = await tx.leaveTypeAssignment.findMany({
+        where: { leaveTypeId, employeeId: { in: employeeIds } },
+        select: { employeeId: true },
       });
+      const existingIds = new Set(
+        existingAssignments.map((assignment) => assignment.employeeId),
+      );
+
+      for (const assignment of assignments) {
+        const balance = await tx.employeeLeaveBalance.findUnique({
+          where: {
+            employeeId_leaveTypeId_year: {
+              employeeId: assignment.employeeId,
+              leaveTypeId,
+              year,
+            },
+          },
+        });
+        if (
+          balance &&
+          assignment.days <
+            Number(balance.usedDays) + Number(balance.pendingDays)
+        )
+          throw new BadRequestException({
+            message:
+              'Assigned days cannot be lower than the employee’s used and pending days.',
+            employeeId: assignment.employeeId,
+            minimumDays: Number(balance.usedDays) + Number(balance.pendingDays),
+          });
+
+        const savedAssignment = await tx.leaveTypeAssignment.upsert({
+          where: {
+            employeeId_leaveTypeId: {
+              employeeId: assignment.employeeId,
+              leaveTypeId,
+            },
+          },
+          update: {
+            assignedDays: assignment.days,
+            assignedByUserId: adminUserId,
+          },
+          create: {
+            employeeId: assignment.employeeId,
+            leaveTypeId,
+            assignedDays: assignment.days,
+            assignedByUserId: adminUserId,
+          },
+        });
+        const savedBalance = await tx.employeeLeaveBalance.upsert({
+          where: {
+            employeeId_leaveTypeId_year: {
+              employeeId: assignment.employeeId,
+              leaveTypeId,
+              year,
+            },
+          },
+          update: { totalDays: assignment.days },
+          create: {
+            employeeId: assignment.employeeId,
+            leaveTypeId,
+            year,
+            totalDays: assignment.days,
+          },
+        });
+        const employee = employees.find(
+          (item) => item.id === assignment.employeeId,
+        )!;
+        await this.notifications.createForUser(tx, {
+          userId: employee.userId,
+          actorUserId: adminUserId,
+          type: NotificationType.LEAVE_BALANCE_ADJUSTED,
+          eventId: `leave-allocation:${leaveTypeId}:${assignment.employeeId}:${savedAssignment.updatedAt.toISOString()}`,
+          leaveBalanceId: savedBalance.id,
+        });
+      }
+
+      const createdCount = assignments.filter(
+        (assignment) => !existingIds.has(assignment.employeeId),
+      ).length;
       return {
         success: true,
-        message: 'Leave assignments saved successfully.',
+        message: 'Employee leave allocations saved successfully.',
         data: {
           leaveTypeId,
-          employeeIds,
-          requestedCount: employeeIds.length,
-          assignedCount: created.count,
-          alreadyAssignedCount: employeeIds.length - created.count,
+          year,
+          assignments,
+          requestedCount: assignments.length,
+          createdCount,
+          updatedCount: assignments.length - createdCount,
         },
       };
     });
@@ -373,6 +458,7 @@ export class LeaveTypesService {
             },
           },
         },
+        orderBy: { employee: { firstName: 'asc' } },
       }),
     };
   }
@@ -423,7 +509,7 @@ export class LeaveTypesService {
   ) {
     const employees = await tx.employee.findMany({
       where: { id: { in: employeeIds } },
-      select: { id: true, gender: true },
+      select: { id: true, userId: true, gender: true },
     });
     const found = new Set(employees.map((employee) => employee.id));
     const missingEmployeeIds = employeeIds.filter((id) => !found.has(id));

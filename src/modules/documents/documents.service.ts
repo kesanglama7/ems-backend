@@ -301,9 +301,11 @@ export class DocumentsService {
 
       select: {
         id: true,
+        title: true,
         status: true,
         bucket: true,
         storagePath: true,
+        employee: { select: { firstName: true, lastName: true } },
       },
     });
 
@@ -335,6 +337,8 @@ export class DocumentsService {
             actorUserId: userId,
             eventId: `document:${document.id}:deleted`,
             documentId: document.id,
+            title: 'Pending document deleted',
+            message: `${document.employee.firstName} ${document.employee.lastName} deleted “${document.title}” before it was reviewed.`,
           });
       })
       .catch(rethrowConcurrentMutation);
